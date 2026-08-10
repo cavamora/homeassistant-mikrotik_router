@@ -1568,10 +1568,53 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             self.rebootcheck = self.ds["resource"]["uptime_epoch"]
 
     # ---------------------------
+    #   get_firmware_version
+    # ---------------------------
+    def get_firmware_version(self) -> None:
+        """Get firmware version from Mikrotik.
+
+        This uses /system/resource, so read-only RouterOS users can still
+        populate major/minor firmware version even when package update checks
+        require write/policy/reboot permissions.
+        """
+        resources = parse_api(
+            data={},
+            source=self.api.query("/system/resource"),
+            vals=[
+                {"name": "version", "default": "unknown"},
+            ],
+        )
+
+        full_version = resources.get("version", "unknown")
+        if full_version == "unknown":
+            return
+
+        try:
+            self.major_fw_version, self.minor_fw_version = parse_routeros_major_minor(
+                full_version
+            )
+            _LOGGER.debug(
+                "Mikrotik %s FW version major=%s minor=%s (%s)",
+                self.host,
+                self.major_fw_version,
+                self.minor_fw_version,
+                full_version,
+            )
+        except Exception as err:
+            _LOGGER.error(
+                "Mikrotik %s unable to determine major/minor FW version (%s): %s",
+                self.host,
+                full_version,
+                err,
+            )
+
+    # ---------------------------
     #   get_firmware_update
     # ---------------------------
     def get_firmware_update(self) -> None:
         """Check for firmware update on Mikrotik"""
+        self.get_firmware_version()
+
         if (
             "write" not in self.ds["access"]
             or "policy" not in self.ds["access"]
