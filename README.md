@@ -1,4 +1,13 @@
 # Mikrotik Router
+
+## About this fork
+
+This Home Assistant custom integration repository is a small fork created to make it easier to use the current upstream `master` version of [`tomaae/homeassistant-mikrotik_router`](https://github.com/tomaae/homeassistant-mikrotik_router), including the login-related fix that is already available there while the corresponding PR/release is being accepted upstream.
+
+The intention is not to replace the upstream Mikrotik Router integration. This repository only carries the minimal changes needed for Home Assistant/HACS users who need that fix now, and should be treated as a temporary compatibility fork until the upstream project includes it through the normal channel.
+
+---
+
 ![GitHub release (latest by date)](https://img.shields.io/github/v/release/tomaae/homeassistant-mikrotik_router?style=plastic)
 [![hacs_badge](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=plastic)](https://github.com/hacs/integration)
 ![Project Stage](https://img.shields.io/badge/project%20stage-Production%20Ready-green.svg?style=plastic)
