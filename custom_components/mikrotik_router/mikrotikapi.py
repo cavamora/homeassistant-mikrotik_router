@@ -55,6 +55,7 @@ class MikrotikAPI:
         self.connection_error_reported = False
         self.client_traffic_last_run = None
         self.disable_health = False
+        self._permission_denied_paths = set()
 
         # Default ports
         if not self._port:
@@ -268,6 +269,15 @@ class MikrotikAPI:
         return False
 
     # ---------------------------
+    #   _is_permission_error
+    # ---------------------------
+    @staticmethod
+    def _is_permission_error(error) -> bool:
+        """Return True when RouterOS denies access to a path/command."""
+        error_text = str(error).lower()
+        return "not enough permissions" in error_text or error_text.endswith("(9)")
+
+    # ---------------------------
     #   error_to_strings
     # ---------------------------
     def error_to_strings(self, error):
@@ -309,6 +319,9 @@ class MikrotikAPI:
         if args is None:
             args = {}
 
+        if path in self._permission_denied_paths:
+            return None
+
         if not self.connection_check():
             return None
 
@@ -330,6 +343,16 @@ class MikrotikAPI:
                     self.lock.release()
                     return None
 
+                if self._is_permission_error(e):
+                    _LOGGER.warning(
+                        "Mikrotik %s insufficient permissions for path %s; disabling this optional query",
+                        self._host,
+                        path,
+                    )
+                    self._permission_denied_paths.add(path)
+                    self.lock.release()
+                    return None
+
                 self.disconnect(f"building list for path {path}", e)
                 self.lock.release()
                 return None
@@ -339,6 +362,16 @@ class MikrotikAPI:
             try:
                 response = list(response(command, **args))
             except Exception as e:
+                if self._is_permission_error(e):
+                    _LOGGER.warning(
+                        "Mikrotik %s insufficient permissions for command %s on path %s",
+                        self._host,
+                        command,
+                        path,
+                    )
+                    self.lock.release()
+                    return None
+
                 self.disconnect("path", e)
                 self.lock.release()
                 return None
