@@ -2180,6 +2180,12 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         # Add hosts from wireless
         wireless_detected = {}
+        wireless_signal_attributes = [
+            "signal-strength",
+            "tx-ccq",
+            "tx-rate",
+            "rx-rate",
+        ]
         if self.support_wireless:
             for uid, vals in self.ds["wireless_hosts"].items():
                 if vals["ap"]:
@@ -2198,33 +2204,40 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 for key in [
                     "mac-address",
                     "interface",
-                    "signal-strength",
-                    "tx-ccq",
-                    "tx-rate",
-                    "rx-rate",
+                    *wireless_signal_attributes,
                 ]:
                     self.ds["host"][uid][key] = vals[key]
 
         # Add hosts from DHCP
+        dhcp_detected = {}
         for uid, vals in self.ds["dhcp"].items():
             if not vals["enabled"]:
                 continue
 
-            if uid not in self.ds["host"]:
-                self.ds["host"][uid] = {"source": "dhcp"}
-            elif self.ds["host"][uid]["source"] != "dhcp":
+            if uid in capsman_detected or uid in wireless_detected:
                 continue
 
+            if uid not in self.ds["host"]:
+                self.ds["host"][uid] = {}
+
+            dhcp_detected[uid] = True
+            self.ds["host"][uid]["source"] = "dhcp"
             for key in ["address", "mac-address", "interface"]:
                 self.ds["host"][uid][key] = vals[key]
 
         # Add hosts from ARP
         for uid, vals in self.ds["arp"].items():
-            if uid not in self.ds["host"]:
-                self.ds["host"][uid] = {"source": "arp"}
-            elif self.ds["host"][uid]["source"] != "arp":
+            if (
+                uid in capsman_detected
+                or uid in wireless_detected
+                or uid in dhcp_detected
+            ):
                 continue
 
+            if uid not in self.ds["host"]:
+                self.ds["host"][uid] = {}
+
+            self.ds["host"][uid]["source"] = "arp"
             for key in ["address", "mac-address", "interface"]:
                 self.ds["host"][uid][key] = vals[key]
 
@@ -2261,6 +2274,10 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         self.ds["resource"]["clients_wired"] = 0
         self.ds["resource"]["clients_wireless"] = 0
         for uid, vals in self.ds["host"].items():
+            if vals["source"] != "wireless":
+                for key in wireless_signal_attributes:
+                    self.ds["host"][uid].pop(key, None)
+
             # Captive portal data
             if self.option_sensor_client_captive:
                 if uid in self.ds["hostspot_host"]:
