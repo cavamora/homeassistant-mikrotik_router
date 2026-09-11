@@ -8,6 +8,10 @@ import logging
 from homeassistant.components import zone
 from homeassistant.components.device_tracker import DOMAIN as DEVICE_TRACKER_DOMAIN
 from homeassistant.components.device_tracker.const import CONF_ASSOCIATED_ZONE
+from homeassistant.components.sensor import (
+    DOMAIN as SENSOR_DOMAIN,
+    SensorDeviceClass,
+)
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, service
 from homeassistant.helpers import device_registry, entity_registry
@@ -17,6 +21,7 @@ from homeassistant.const import (
     CONF_NAME,
     CONF_PORT,
     CONF_SSL,
+    CONF_UNIT_OF_MEASUREMENT,
     CONF_VERIFY_SSL,
     CONF_ZONE,
     STATE_HOME,
@@ -236,6 +241,32 @@ def _async_migrate_device_tracker_zones(
         )
 
 
+def _async_migrate_temperature_sensor_units(
+    hass: HomeAssistant, config_entry: MikrotikConfigEntry
+) -> None:
+    """Remove the integration-provided temperature display unit."""
+    registry = entity_registry.async_get(hass)
+
+    for entry in entity_registry.async_entries_for_config_entry(
+        registry, config_entry.entry_id
+    ):
+        if (
+            entry.domain != SENSOR_DOMAIN
+            or entry.platform != DOMAIN
+            or entry.original_device_class != SensorDeviceClass.TEMPERATURE
+        ):
+            continue
+
+        if f"{SENSOR_DOMAIN}.private" in entry.options:
+            registry.async_update_entity_options(
+                entry.entity_id, f"{SENSOR_DOMAIN}.private", None
+            )
+
+        sensor_options = entry.options.get(SENSOR_DOMAIN, {})
+        if CONF_UNIT_OF_MEASUREMENT not in sensor_options:
+            registry.async_update_entity(entry.entity_id, unit_of_measurement=None)
+
+
 async def async_migrate_entry(hass: HomeAssistant, config_entry: MikrotikConfigEntry):
     _LOGGER.debug(
         "Migrating configuration from version %s.%s",
@@ -272,6 +303,10 @@ async def async_migrate_entry(hass: HomeAssistant, config_entry: MikrotikConfigE
 
     if new_version == 3 and new_minor_version < 2:
         new_minor_version = 2
+
+    if new_version == 3 and new_minor_version < 3:
+        _async_migrate_temperature_sensor_units(hass, config_entry)
+        new_minor_version = 3
 
     if (
         new_data != config_entry.data
