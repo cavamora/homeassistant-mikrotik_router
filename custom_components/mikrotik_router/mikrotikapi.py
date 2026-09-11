@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import ssl
-from time import time
+from time import monotonic, time
 from threading import RLock
 from voluptuous import Optional
 from .const import (
@@ -555,10 +555,6 @@ class MikrotikAPI:
         _LOGGER.debug("Ping host failure: %s", args["address"])
         return False
 
-    @staticmethod
-    def _current_milliseconds():
-        return int(round(time() * 1000))
-
     def is_accounting_and_local_traffic_enabled(self) -> (bool, bool):
         # Returns:
         #   1st bool: Is accounting enabled
@@ -615,13 +611,15 @@ class MikrotikAPI:
 
             self.lock.release()
 
+        client_traffic_current_run = monotonic()
+
         # First request will be discarded because we cannot know when the last data was retrieved
         # prevents spikes in data
-        if not self.client_traffic_last_run:
-            self.client_traffic_last_run = self._current_milliseconds()
+        if self.client_traffic_last_run is None:
+            self.client_traffic_last_run = client_traffic_current_run
             return 0
 
         # Calculate time difference in seconds and return
-        time_diff = self._current_milliseconds() - self.client_traffic_last_run
-        self.client_traffic_last_run = self._current_milliseconds()
-        return time_diff / 1000
+        time_diff = client_traffic_current_run - self.client_traffic_last_run
+        self.client_traffic_last_run = client_traffic_current_run
+        return time_diff

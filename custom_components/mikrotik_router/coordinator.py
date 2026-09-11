@@ -5,6 +5,8 @@ from __future__ import annotations
 import ipaddress
 import logging
 import re
+from time import monotonic
+
 import pytz
 
 from datetime import datetime, timedelta
@@ -300,6 +302,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         self.accessrights_reported = False
 
         self.last_hwinfo_update = datetime(1970, 1, 1)
+        self.interface_traffic_last_run = None
         self.rebootcheck = 0
 
     # ---------------------------
@@ -750,6 +753,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     def get_interface(self) -> None:
         """Get all interfaces data from Mikrotik"""
+        interface_traffic_current_run = monotonic()
         self.ds["interface"] = parse_api(
             data=self.ds["interface"],
             source=self.api.query("/interface"),
@@ -799,14 +803,21 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             ],
         )
 
-        if self.option_sensor_port_traffic:
+        if self.option_sensor_port_traffic and self.api.connected():
+            time_diff = 0
+            if self.interface_traffic_last_run is not None:
+                time_diff = (
+                    interface_traffic_current_run - self.interface_traffic_last_run
+                )
+            self.interface_traffic_last_run = interface_traffic_current_run
+
             for uid, vals in self.ds["interface"].items():
                 current_tx = vals["tx-current"]
                 previous_tx = vals["tx-previous"] or current_tx
 
                 delta_tx = max(0, current_tx - previous_tx)
-                self.ds["interface"][uid]["tx"] = round(
-                    delta_tx / self.option_scan_interval.seconds
+                self.ds["interface"][uid]["tx"] = (
+                    round(delta_tx / time_diff) if time_diff else 0.0
                 )
                 self.ds["interface"][uid]["tx-previous"] = current_tx
 
@@ -814,8 +825,8 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 previous_rx = vals["rx-previous"] or current_rx
 
                 delta_rx = max(0, current_rx - previous_rx)
-                self.ds["interface"][uid]["rx"] = round(
-                    delta_rx / self.option_scan_interval.seconds
+                self.ds["interface"][uid]["rx"] = (
+                    round(delta_rx / time_diff) if time_diff else 0.0
                 )
                 self.ds["interface"][uid]["rx-previous"] = current_rx
 
