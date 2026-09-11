@@ -78,19 +78,26 @@ class MikrotikRouterOSUpdate(MikrotikEntity, UpdateEntity):
         return self._data[self.entity_description.data_attribute]
 
     @property
-    def installed_version(self) -> str:
+    def installed_version(self) -> str | None:
         """Version installed and in use."""
-        return self._data["installed-version"]
+        version = self._data.get("installed-version")
+        if not version or version == "unknown":
+            version = self.coordinator.data.get("resource", {}).get("version")
+
+        return version if version and version != "unknown" else None
 
     @property
-    def latest_version(self) -> str:
+    def latest_version(self) -> str | None:
         """Latest version available for install."""
-        return self._data["latest-version"]
+        version = self._data.get("latest-version")
+        return version if version and version != "unknown" else None
 
     async def options_updated(self) -> None:
         """No action needed."""
 
-    async def async_install(self, version: str, backup: bool, **kwargs: Any) -> None:
+    async def async_install(
+        self, version: str | None, backup: bool, **kwargs: Any
+    ) -> None:
         """Install an update."""
         self.require_access("write", "policy", "reboot")
         if backup:
@@ -106,14 +113,17 @@ class MikrotikRouterOSUpdate(MikrotikEntity, UpdateEntity):
             None,
         )
 
-    async def async_release_notes(self) -> str:
+    async def async_release_notes(self) -> str | None:
         """Return the release notes."""
+        installed_version = self.installed_version
+        latest_version = self.latest_version
+        if installed_version is None or latest_version is None:
+            return None
+
         try:
             session = async_get_clientsession(self.hass)
             """Get concatenated changelogs from installed_version to latest_version in reverse order."""
-            versions_to_fetch = generate_version_list(
-                self._data["installed-version"], self._data["latest-version"]
-            )
+            versions_to_fetch = generate_version_list(installed_version, latest_version)
 
             tasks = [fetch_changelog(session, version) for version in versions_to_fetch]
             changelogs = await asyncio.gather(*tasks)

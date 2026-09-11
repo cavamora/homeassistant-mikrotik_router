@@ -1526,6 +1526,28 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             ],
         )
 
+        full_version = self.ds["resource"].get("version")
+        if full_version and full_version != "unknown":
+            try:
+                # RouterOS may report "7.23 (stable)", "7.23.1", etc.
+                self.major_fw_version, self.minor_fw_version = (
+                    parse_routeros_major_minor(full_version)
+                )
+                _LOGGER.debug(
+                    "Mikrotik %s FW version major=%s minor=%s (%s)",
+                    self.host,
+                    self.major_fw_version,
+                    self.minor_fw_version,
+                    full_version,
+                )
+            except Exception as err:
+                _LOGGER.error(
+                    "Mikrotik %s unable to determine major/minor FW version (%s): %s",
+                    self.host,
+                    full_version,
+                    err,
+                )
+
         tmp_uptime = 0
         tmp = re.split(r"(\d+)[s]", self.ds["resource"]["uptime_str"])
         if len(tmp) > 1:
@@ -1610,45 +1632,22 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             "/system/package/update", "check-for-updates", None, None, {"duration": 10}
         )
         self.ds["fw-update"] = parse_api(
-            data=self.ds["fw-update"],
+            data={},
             source=self.api.query("/system/package/update"),
             vals=[
                 {"name": "status"},
                 {"name": "channel", "default": "unknown"},
-                {"name": "installed-version", "default": "unknown"},
-                {"name": "latest-version", "default": "unknown"},
+                {"name": "installed-version", "default": None},
+                {"name": "latest-version", "default": None},
             ],
         )
 
-        if "status" in self.ds["fw-update"]:
-            self.ds["fw-update"]["available"] = (
-                self.ds["fw-update"]["status"] == "New version is available"
-            )
-
-        else:
-            self.ds["fw-update"]["available"] = False
-
-        if self.ds["fw-update"]["installed-version"] != "unknown":
-            full_version = self.ds["fw-update"].get("installed-version")
-            try:
-                # RouterOS may report "7.23 (stable)", "7.23.1", etc.
-                self.major_fw_version, self.minor_fw_version = (
-                    parse_routeros_major_minor(full_version)
-                )
-                _LOGGER.debug(
-                    "Mikrotik %s FW version major=%s minor=%s (%s)",
-                    self.host,
-                    self.major_fw_version,
-                    self.minor_fw_version,
-                    full_version,
-                )
-            except Exception as err:
-                _LOGGER.error(
-                    "Mikrotik %s unable to determine major/minor FW version (%s): %s",
-                    self.host,
-                    full_version,
-                    err,
-                )
+        self.ds["fw-update"]["available"] = (
+            self.ds["fw-update"].get("status") == "New version is available"
+            and self.ds["fw-update"].get("installed-version")
+            not in (None, "", "unknown")
+            and self.ds["fw-update"].get("latest-version") not in (None, "", "unknown")
+        )
 
     # ---------------------------
     #   get_ups
