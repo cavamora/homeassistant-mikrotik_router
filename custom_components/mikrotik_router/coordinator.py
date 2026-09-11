@@ -290,6 +290,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         self.support_capsman = False
         self.support_wireless = False
+        self.support_hotspot = False
         self.support_ppp = False
         self.support_ups = False
         self.support_gps = False
@@ -499,9 +500,16 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         )
         self.support_capsman = False
         self.support_wireless = False
+        self.support_hotspot = False
         self._wifimodules = []
 
+        hotspot_package_enabled = (
+            "hotspot" in packages and packages["hotspot"]["enabled"]
+        )
+
         if 0 < self.major_fw_version < 7:
+            self.support_hotspot = hotspot_package_enabled
+
             if "ppp" in packages:
                 self.support_ppp = packages["ppp"]["enabled"]
 
@@ -513,6 +521,17 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         elif 0 < self.major_fw_version >= 7:
             self.support_ppp = True
+            architecture = str(
+                self.ds["resource"].get("architecture-name", "unknown")
+            ).lower()
+            # RouterOS 7.20 moved Hotspot into a separate package on SMIPS.
+            hotspot_separate_package = architecture == "smips" and (
+                self.major_fw_version > 7
+                or (self.major_fw_version == 7 and self.minor_fw_version >= 20)
+            )
+            self.support_hotspot = (
+                hotspot_package_enabled if hotspot_separate_package else True
+            )
 
             if "wifiwave2" in packages and packages["wifiwave2"]["enabled"]:
                 self._wifimodules.append("wifiwave2")
@@ -546,6 +565,10 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         if "gps" in packages and packages["gps"]["enabled"]:
             self.support_gps = True
+
+        if not self.support_hotspot:
+            self.ds["hostspot_host"] = {}
+            self.ds["resource"]["captive_authorized"] = 0
 
     # ---------------------------
     #   async_get_host_hass
@@ -671,7 +694,11 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             elif 0 < self.major_fw_version >= 7:
                 await self.hass.async_add_executor_job(self.process_kid_control_devices)
 
-        if self.api.connected() and self.option_sensor_client_captive:
+        if (
+            self.api.connected()
+            and self.support_hotspot
+            and self.option_sensor_client_captive
+        ):
             await self.hass.async_add_executor_job(self.get_captive)
 
         if self.api.connected() and self.option_sensor_simple_queues:
@@ -1509,6 +1536,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             vals=[
                 {"name": "platform", "default": "unknown"},
                 {"name": "board-name", "default": "unknown"},
+                {"name": "architecture-name", "default": "unknown"},
                 {"name": "version", "default": "unknown"},
                 {"name": "uptime_str", "source": "uptime", "default": "unknown"},
                 {"name": "cpu-load", "default": "unknown"},
@@ -1768,10 +1796,10 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     #   get_captive
     # ---------------------------
     def get_captive(self) -> None:
-        """Get list of all environment variables from Mikrotik"""
+        """Get captive portal hosts from Mikrotik."""
         self.ds["hostspot_host"] = parse_api(
             data={},
-            source=self.api.query("/ip/hotspot/host"),
+            source=self.api.query("/ip/hotspot/host", ignore_trap=True),
             key="mac-address",
             vals=[
                 {"name": "mac-address"},
