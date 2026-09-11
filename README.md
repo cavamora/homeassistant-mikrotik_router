@@ -201,7 +201,8 @@ NOTES:
 First options page:
 
 ![Integration options](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/integration_options.png)
-* "Scan interval" - Scan/refresh time in seconds. HA needs to be reloaded for scan interval change to be applied
+* "Scan interval" - Scan/refresh time in seconds. Interval changes are applied when options are saved
+* "Device tracker scan interval" - Time in seconds between active reachability checks for tracked network devices
 * "Unit of measurement" - Traffic sensor measurement (bps, Kbps, Mbps, B/s, KB/s, MB/s)
 * "Show client MAC and IP on interfaces" - Display connected IP and MAC address for devices connected to ports on router
 * "Track network devices timeout" - Tracked devices will be marked as away after timeout (does not apply to Mikrotik wireless and caps-man)

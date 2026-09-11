@@ -16,8 +16,10 @@ from homeassistant.const import (
     CONF_PASSWORD,
     CONF_SSL,
     CONF_VERIFY_SSL,
+    UnitOfTime,
 )
 from homeassistant.core import callback
+from homeassistant.helpers import selector
 
 from .const import (
     DOMAIN,
@@ -25,6 +27,8 @@ from .const import (
     DEFAULT_TRACK_IFACE_CLIENTS,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
+    CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+    DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_TRACK_HOSTS,
     DEFAULT_TRACK_HOSTS,
     CONF_SENSOR_PORT_TRACKER,
@@ -386,7 +390,30 @@ class MikrotikControllerOptionsFlowHandler(OptionsFlow):
                         default=self.config_entry.options.get(
                             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
                         ),
-                    ): int,
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=10,
+                            max=600,
+                            step=1,
+                            mode=selector.NumberSelectorMode.BOX,
+                            unit_of_measurement=UnitOfTime.SECONDS,
+                        ),
+                    ),
+                    vol.Optional(
+                        CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+                        default=self.config_entry.options.get(
+                            CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+                            DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
+                        ),
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=10,
+                            max=600,
+                            step=1,
+                            mode=selector.NumberSelectorMode.BOX,
+                            unit_of_measurement=UnitOfTime.SECONDS,
+                        ),
+                    ),
                     vol.Optional(
                         CONF_TRACK_IFACE_CLIENTS,
                         default=self.config_entry.options.get(

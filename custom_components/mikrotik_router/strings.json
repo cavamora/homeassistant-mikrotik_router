@@ -69,7 +69,8 @@
         "step": {
             "basic_options": {
                 "data": {
-                    "scan_interval": "Scan interval (requires HA restart)",
+                    "scan_interval": "Scan interval",
+                    "device_tracker_scan_interval": "Device tracker scan interval",
                     "track_iface_clients": "Show client MAC and IP on interfaces",
                     "unit_of_measurement": "Unit of measurement",
                     "track_network_hosts_timeout": "Track network devices timeout (seconds)"

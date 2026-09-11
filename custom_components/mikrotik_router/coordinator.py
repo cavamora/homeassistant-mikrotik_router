@@ -40,6 +40,8 @@ from .const import (
     DEFAULT_TRACK_HOSTS,
     CONF_SCAN_INTERVAL,
     DEFAULT_SCAN_INTERVAL,
+    CONF_DEVICE_TRACKER_SCAN_INTERVAL,
+    DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL,
     CONF_SENSOR_PORT_TRAFFIC,
     DEFAULT_SENSOR_PORT_TRAFFIC,
     CONF_SENSOR_CLIENT_TRAFFIC,
@@ -123,7 +125,7 @@ class MikrotikTrackerCoordinator(DataUpdateCoordinator[None]):
             _LOGGER,
             config_entry=config_entry,
             name=DOMAIN,
-            update_interval=timedelta(seconds=10),
+            update_interval=coordinator.option_device_tracker_scan_interval,
         )
         self.name = config_entry.data[CONF_NAME]
         self.host = config_entry.data[CONF_HOST]
@@ -438,6 +440,17 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         """Config entry option scan interval."""
         scan_interval = self.config_entry.options.get(
             CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+        )
+        return timedelta(seconds=scan_interval)
+
+    # ---------------------------
+    #   option_device_tracker_scan_interval
+    # ---------------------------
+    @property
+    def option_device_tracker_scan_interval(self):
+        """Config entry option device tracker scan interval."""
+        scan_interval = self.config_entry.options.get(
+            CONF_DEVICE_TRACKER_SCAN_INTERVAL, DEFAULT_DEVICE_TRACKER_SCAN_INTERVAL
         )
         return timedelta(seconds=scan_interval)
 
