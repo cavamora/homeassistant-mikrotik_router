@@ -331,6 +331,15 @@ class MikrotikAPI:
         try:
             _LOGGER.debug("API query: %s", path)
             response = self._connection.path(path)
+        except TrapError as e:
+            if ignore_trap:
+                _LOGGER.debug("Optional API query %s unavailable: %s", path, e)
+                self.lock.release()
+                return None
+
+            self.disconnect("path", e)
+            self.lock.release()
+            return None
         except Exception as e:
             self.disconnect("path", e)
             self.lock.release()

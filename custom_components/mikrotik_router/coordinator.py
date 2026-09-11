@@ -291,7 +291,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         self.support_ppp = False
         self.support_ups = False
         self.support_gps = False
-        self._wifimodule = "wireless"
+        self._wifimodules = []
 
         self.major_fw_version = 0
         self.minor_fw_version = 0
@@ -494,6 +494,9 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 },
             ],
         )
+        self.support_capsman = False
+        self.support_wireless = False
+        self._wifimodules = []
 
         if 0 < self.major_fw_version < 7:
             if "ppp" in packages:
@@ -502,43 +505,37 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             if "wireless" in packages:
                 self.support_capsman = packages["wireless"]["enabled"]
                 self.support_wireless = packages["wireless"]["enabled"]
-            else:
-                self.support_capsman = False
-                self.support_wireless = False
+                if self.support_wireless:
+                    self._wifimodules = ["wireless"]
 
         elif 0 < self.major_fw_version >= 7:
             self.support_ppp = True
-            self.support_wireless = True
+
             if "wifiwave2" in packages and packages["wifiwave2"]["enabled"]:
-                self.support_capsman = False
-                self._wifimodule = "wifiwave2"
+                self._wifimodules.append("wifiwave2")
 
-            elif "wifi" in packages and packages["wifi"]["enabled"]:
-                self.support_capsman = False
-                self._wifimodule = "wifi"
+            if (
+                (self.major_fw_version == 7 and self.minor_fw_version >= 13)
+                or self.major_fw_version > 7
+                or any(
+                    package in packages and packages[package]["enabled"]
+                    for package in ["wifi", "wifi-qcom", "wifi-qcom-ac"]
+                )
+            ):
+                self._wifimodules.append("wifi")
 
-            elif "wifi-qcom" in packages and packages["wifi-qcom"]["enabled"]:
-                self.support_capsman = False
-                self._wifimodule = "wifi"
-
-            elif "wifi-qcom-ac" in packages and packages["wifi-qcom-ac"]["enabled"]:
-                self.support_capsman = False
-                self._wifimodule = "wifi"
-
-            elif (
-                self.major_fw_version == 7 and self.minor_fw_version >= 13
-            ) or self.major_fw_version > 7:
-                self.support_capsman = False
-                self._wifimodule = "wifi"
-
-            else:
+            if (self.major_fw_version == 7 and self.minor_fw_version < 13) or (
+                "wireless" in packages and packages["wireless"]["enabled"]
+            ):
+                self._wifimodules.append("wireless")
                 self.support_capsman = True
-                self.support_wireless = bool(self.minor_fw_version < 13)
+
+            self.support_wireless = bool(self._wifimodules)
 
             _LOGGER.debug(
-                "Mikrotik %s wifi module=%s",
+                "Mikrotik %s wifi modules=%s",
                 self.host,
-                self._wifimodule,
+                self._wifimodules,
             )
 
         if "ups" in packages and packages["ups"]["enabled"]:
@@ -2034,18 +2031,9 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     def get_capsman_hosts(self) -> None:
         """Get CAPS-MAN hosts data from Mikrotik"""
-
-        if self.major_fw_version > 7 or (
-            self.major_fw_version == 7 and self.minor_fw_version >= 13
-        ):
-            registration_path = "/interface/wifi/registration-table"
-
-        else:
-            registration_path = "/caps-man/registration-table"
-
         self.ds["capsman_hosts"] = parse_api(
             data={},
-            source=self.api.query(registration_path),
+            source=self.api.query("/caps-man/registration-table", ignore_trap=True),
             key="mac-address",
             vals=[
                 {"name": "mac-address"},
@@ -2059,38 +2047,39 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     def get_wireless(self) -> None:
         """Get wireless data from Mikrotik"""
-
-        self.ds["wireless"] = parse_api(
-            data=self.ds["wireless"],
-            source=self.api.query(f"/interface/{self._wifimodule}"),
-            key="name",
-            vals=[
-                {"name": "master-interface", "default": ""},
-                {"name": "mac-address", "default": "unknown"},
-                {"name": "ssid", "default": "unknown"},
-                {"name": "mode", "default": "unknown"},
-                {"name": "radio-name", "default": "unknown"},
-                {"name": "interface-type", "default": "unknown"},
-                {"name": "country", "default": "unknown"},
-                {"name": "installation", "default": "unknown"},
-                {"name": "antenna-gain", "default": "unknown"},
-                {"name": "frequency", "default": "unknown"},
-                {"name": "band", "default": "unknown"},
-                {"name": "channel-width", "default": "unknown"},
-                {"name": "secondary-frequency", "default": "unknown"},
-                {"name": "wireless-protocol", "default": "unknown"},
-                {"name": "rate-set", "default": "unknown"},
-                {"name": "distance", "default": "unknown"},
-                {"name": "tx-power-mode", "default": "unknown"},
-                {"name": "vlan-id", "default": "unknown"},
-                {"name": "wds-mode", "default": "unknown"},
-                {"name": "wds-default-bridge", "default": "unknown"},
-                {"name": "bridge-mode", "default": "unknown"},
-                {"name": "hide-ssid", "type": "bool"},
-                {"name": "running", "type": "bool"},
-                {"name": "disabled", "type": "bool"},
-            ],
-        )
+        self.ds["wireless"] = {}
+        for wifimodule in self._wifimodules:
+            self.ds["wireless"] = parse_api(
+                data=self.ds["wireless"],
+                source=self.api.query(f"/interface/{wifimodule}", ignore_trap=True),
+                key="name",
+                vals=[
+                    {"name": "master-interface", "default": ""},
+                    {"name": "mac-address", "default": "unknown"},
+                    {"name": "ssid", "default": "unknown"},
+                    {"name": "mode", "default": "unknown"},
+                    {"name": "radio-name", "default": "unknown"},
+                    {"name": "interface-type", "default": "unknown"},
+                    {"name": "country", "default": "unknown"},
+                    {"name": "installation", "default": "unknown"},
+                    {"name": "antenna-gain", "default": "unknown"},
+                    {"name": "frequency", "default": "unknown"},
+                    {"name": "band", "default": "unknown"},
+                    {"name": "channel-width", "default": "unknown"},
+                    {"name": "secondary-frequency", "default": "unknown"},
+                    {"name": "wireless-protocol", "default": "unknown"},
+                    {"name": "rate-set", "default": "unknown"},
+                    {"name": "distance", "default": "unknown"},
+                    {"name": "tx-power-mode", "default": "unknown"},
+                    {"name": "vlan-id", "default": "unknown"},
+                    {"name": "wds-mode", "default": "unknown"},
+                    {"name": "wds-default-bridge", "default": "unknown"},
+                    {"name": "bridge-mode", "default": "unknown"},
+                    {"name": "hide-ssid", "type": "bool"},
+                    {"name": "running", "type": "bool"},
+                    {"name": "disabled", "type": "bool"},
+                ],
+            )
 
         for uid in self.ds["wireless"]:
             if self.ds["wireless"][uid]["master-interface"]:
@@ -2109,21 +2098,26 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     def get_wireless_hosts(self) -> None:
         """Get wireless hosts data from Mikrotik"""
-        self.ds["wireless_hosts"] = parse_api(
-            data={},
-            source=self.api.query(f"/interface/{self._wifimodule}/registration-table"),
-            key="mac-address",
-            vals=[
-                {"name": "mac-address"},
-                {"name": "interface", "default": "unknown"},
-                {"name": "ap", "type": "bool"},
-                {"name": "uptime"},
-                {"name": "signal-strength"},
-                {"name": "tx-ccq"},
-                {"name": "tx-rate"},
-                {"name": "rx-rate"},
-            ],
-        )
+        self.ds["wireless_hosts"] = {}
+        for wifimodule in self._wifimodules:
+            self.ds["wireless_hosts"] = parse_api(
+                data=self.ds["wireless_hosts"],
+                source=self.api.query(
+                    f"/interface/{wifimodule}/registration-table",
+                    ignore_trap=True,
+                ),
+                key="mac-address",
+                vals=[
+                    {"name": "mac-address"},
+                    {"name": "interface", "default": "unknown"},
+                    {"name": "ap", "type": "bool"},
+                    {"name": "uptime"},
+                    {"name": "signal-strength"},
+                    {"name": "tx-ccq"},
+                    {"name": "tx-rate"},
+                    {"name": "rx-rate"},
+                ],
+            )
 
     # ---------------------------
     #   async_process_host
@@ -2135,11 +2129,10 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         if self.support_capsman:
             for uid, vals in self.ds["capsman_hosts"].items():
                 if uid not in self.ds["host"]:
-                    self.ds["host"][uid] = {"source": "capsman"}
-                elif self.ds["host"][uid]["source"] != "capsman":
-                    continue
+                    self.ds["host"][uid] = {}
 
                 capsman_detected[uid] = True
+                self.ds["host"][uid]["source"] = "capsman"
                 self.ds["host"][uid]["available"] = True
                 self.ds["host"][uid]["last-seen"] = utcnow()
                 for key in ["mac-address", "interface"]:
@@ -2152,12 +2145,14 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 if vals["ap"]:
                     continue
 
-                if uid not in self.ds["host"]:
-                    self.ds["host"][uid] = {"source": "wireless"}
-                elif self.ds["host"][uid]["source"] != "wireless":
+                if uid in capsman_detected:
                     continue
 
+                if uid not in self.ds["host"]:
+                    self.ds["host"][uid] = {}
+
                 wireless_detected[uid] = True
+                self.ds["host"][uid]["source"] = "wireless"
                 self.ds["host"][uid]["available"] = True
                 self.ds["host"][uid]["last-seen"] = utcnow()
                 for key in [
