@@ -887,6 +887,8 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                         vals=[
                             {"name": "status", "default": "unknown"},
                             {"name": "auto-negotiation", "default": "unknown"},
+                            {"name": "rate", "default": "unknown"},
+                            {"name": "full-duplex", "default": "unknown"},
                             {"name": "advertising", "default": "unknown"},
                             {"name": "link-partner-advertising", "default": "unknown"},
                             {"name": "sfp-temperature", "default": 0},
