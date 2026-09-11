@@ -41,8 +41,9 @@
             "ssl_handshake_failure": "SSL handshake failure",
             "connection_timeout": "Mikrotik connection timeout.",
             "wrong_login": "Invalid user name or password.",
-            "invalid_auth": "Invalid user name or password.",
             "ssl_verify_failure": "Certificate verify failed",
+            "invalid_auth": "Invalid user name or password.",
+            "cannot_identify": "The router identity could not be verified. Ensure the RouterOS user can read System > License.",
             "librouteros_api_mismatch": "Incompatible librouteros API; update this integration."
         },
         "abort": {
@@ -50,30 +51,15 @@
             "wrong_router": "The connection settings belong to a different router."
         }
     },
-    "exceptions": {
-        "entry_not_found": {
-            "message": "The RouterOS entry {entry} could not be found. Refresh the integration and try again."
-        },
-        "managed_by_capsman": {
-            "message": "{entity} is managed by CAPsMAN and cannot be controlled directly."
-        },
-        "missing_permissions": {
-            "message": "The RouterOS user is missing the required permissions: {permissions}."
-        },
-        "routeros_command_failed": {
-            "message": "The router did not complete the requested action. Check the connection and RouterOS permissions."
-        }
-    },
     "options": {
         "step": {
             "basic_options": {
                 "data": {
                     "scan_interval": "Scan interval",
-                    "device_tracker_scan_interval": "Device tracker scan interval",
                     "track_iface_clients": "Show client MAC and IP on interfaces",
                     "unit_of_measurement": "Unit of measurement",
                     "track_network_hosts_timeout": "Track network devices timeout (seconds)",
-                    "zone": "Zone for device tracker"
+                    "device_tracker_scan_interval": "Device tracker scan interval"
                 },
                 "title": "Mikrotik Router options (1\/2)",
                 "description": "Configure integration"
@@ -98,6 +84,20 @@
                 "title": "Mikrotik Router options (2\/2)",
                 "description": "Enable sensors and switches"
             }
+        }
+    },
+    "exceptions": {
+        "entry_not_found": {
+            "message": "The RouterOS entry {entry} could not be found. Refresh the integration and try again."
+        },
+        "managed_by_capsman": {
+            "message": "{entity} is managed by CAPsMAN and cannot be controlled directly."
+        },
+        "missing_permissions": {
+            "message": "The RouterOS user is missing the required permissions: {permissions}."
+        },
+        "routeros_command_failed": {
+            "message": "The router did not complete the requested action. Check the connection and RouterOS permissions."
         }
     }
 }
