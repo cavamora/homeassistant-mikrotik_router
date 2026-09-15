@@ -9,16 +9,28 @@ jobs:
   release_zip:
     name: Prepare release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Check out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
+
+      - name: Get version number
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/} # Remove refs/tags/
+          TAG_NAME=${TAG_NAME#v}            # Remove leading v if present
+          echo "TAG_NAME=$TAG_NAME" >> $GITHUB_ENV
+
+      - name: Update version number in manifest
+        run: |
+          python3 /home/runner/work/homeassistant-mikrotik_router/homeassistant-mikrotik_router/.github/update_version.py --version $TAG_NAME
 
       - name: Zip mikrotik_router dir
         run: |
           cd /home/runner/work/homeassistant-mikrotik_router/homeassistant-mikrotik_router/custom_components/mikrotik_router
           zip mikrotik_router.zip -r ./
       - name: Upload zip to release
-        uses: svenstaro/upload-release-action@v1-release
+        uses: svenstaro/upload-release-action@2.11.5
 
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -30,14 +42,16 @@ jobs:
   releasenotes:
     name: Prepare releasenotes
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Check out repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v7
 
-      - name: Set up Python 3.13
-        uses: actions/setup-python@v1
+      - name: Set up Python
+        uses: actions/setup-python@v7
         with:
-          python-version: 3.13
+          python-version: "3.14.2"
 
       - name: Install requirements
         run: |

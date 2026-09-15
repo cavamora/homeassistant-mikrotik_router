@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
+
+from .const import DEFAULT_PORT
+
+INVALID_ROUTER_IDENTIFIERS = {"", "n/a", "none", "unknown"}
 
 
 # ---------------------------
@@ -45,3 +50,43 @@ def parse_routeros_major_minor(version: str) -> tuple[int, int]:
     """Return major/minor integers from a RouterOS version string."""
     parts = normalize_routeros_version(version).split(".")
     return int(parts[0]), int(parts[1])
+
+
+# ---------------------------
+#   normalize_router_host
+# ---------------------------
+def normalize_router_host(host: str) -> str:
+    """Normalize a router host for fallback identity matching."""
+    normalized_host = host.strip().strip("[]")
+    try:
+        return ipaddress.ip_address(normalized_host).compressed
+    except ValueError:
+        return normalized_host.rstrip(".").casefold()
+
+
+# ---------------------------
+#   router_unique_id
+# ---------------------------
+def router_unique_id(
+    host: str,
+    port: int = DEFAULT_PORT,
+    use_ssl: bool = False,
+    serial_number=None,
+    software_id=None,
+    system_id=None,
+) -> str:
+    """Return the best available unique ID for a router."""
+    for prefix, identifier in (
+        ("routerboard", serial_number),
+        ("routeros-system-id", system_id),
+        ("routeros-software-id", software_id),
+    ):
+        if identifier is None:
+            continue
+
+        normalized_identifier = str(identifier).strip().casefold()
+        if normalized_identifier not in INVALID_ROUTER_IDENTIFIERS:
+            return f"{prefix}:{normalized_identifier}"
+
+    effective_port = port or (8729 if use_ssl else 8728)
+    return f"endpoint:{normalize_router_host(host)}|{effective_port}"
