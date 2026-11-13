@@ -119,6 +119,15 @@ DEVICE_ATTRIBUTES_NETWATCH = [
     "comment",
 ]
 
+DEVICE_ATTRIBUTES_ROUTE = [
+    "dst-address",
+    "routing-table",
+    "gateway",
+    "immediate-gw",
+    "comment",
+    "disabled",
+]
+
 
 @dataclass
 class MikrotikBinarySensorEntityDescription(BinarySensorEntityDescription):
@@ -140,6 +149,21 @@ class MikrotikBinarySensorEntityDescription(BinarySensorEntityDescription):
 
 
 SENSOR_TYPES: tuple[BinarySensorEntityDescription, ...] = (
+    MikrotikBinarySensorEntityDescription(
+        key="route_active",
+        name="Route active",
+        icon_enabled="mdi:routes",
+        icon_disabled="mdi:routes",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        ha_group="System",
+        data_path="route",
+        data_attribute="active",
+        data_name="dst-address",
+        data_uid="route-uid",
+        data_reference="route-uid",
+        data_attributes_list=DEVICE_ATTRIBUTES_ROUTE,
+        func="MikrotikBinarySensor",
+    ),
     MikrotikBinarySensorEntityDescription(
         key="system_ups",
         name="UPS",

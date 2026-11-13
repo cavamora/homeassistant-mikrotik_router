@@ -62,6 +62,8 @@ CONF_SENSOR_ENVIRONMENT = "sensor_environment"
 DEFAULT_SENSOR_ENVIRONMENT = False
 CONF_SENSOR_NETWATCH_TRACKER = "sensor_netwatch_tracker"
 DEFAULT_SENSOR_NETWATCH_TRACKER = False
+CONF_SENSOR_ROUTES = "sensor_routes"
+DEFAULT_SENSOR_ROUTES = False
 
 TO_REDACT = {
     "ip-address",
@@ -79,6 +81,7 @@ TO_REDACT = {
     "eeprom",
     "sfp-vendor-serial",
     "gateway",
+    "immediate-gw",
     "dns-server",
     "wins-server",
     "ntp-server",

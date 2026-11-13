@@ -65,6 +65,8 @@ from .const import (
     DEFAULT_VERIFY_SSL,
     DEFAULT_SENSOR_NETWATCH_TRACKER,
     CONF_SENSOR_NETWATCH_TRACKER,
+    CONF_SENSOR_ROUTES,
+    DEFAULT_SENSOR_ROUTES,
 )
 from .helper import router_unique_id
 from .mikrotikapi import MikrotikAPI
@@ -505,6 +507,12 @@ class MikrotikControllerOptionsFlowHandler(OptionsFlow):
                         default=self.config_entry.options.get(
                             CONF_SENSOR_NETWATCH_TRACKER,
                             DEFAULT_SENSOR_NETWATCH_TRACKER,
+                        ),
+                    ): bool,
+                    vol.Optional(
+                        CONF_SENSOR_ROUTES,
+                        default=self.config_entry.options.get(
+                            CONF_SENSOR_ROUTES, DEFAULT_SENSOR_ROUTES
                         ),
                     ): bool,
                     vol.Optional(
