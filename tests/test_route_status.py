@@ -2,6 +2,7 @@
 
 import ast
 import importlib.util
+import json
 from pathlib import Path
 import unittest
 
@@ -92,14 +93,178 @@ class RouteStatusTest(unittest.TestCase):
             {"dst-address": "5.5.5.0/24", "active": True},
         ]
         result = load_routes().parse_routes(rows)
-        self.assertEqual(set(result), {"*1", "*2", "*3"})
+        # Missing active is unknown, never silently reported as false.
+        self.assertEqual(set(result), {"*1", "*2"})
         self.assertFalse(result["*1"]["active"])
         self.assertFalse(result["*2"]["active"])
-        self.assertFalse(result["*3"]["active"])
 
     def test_unavailable_snapshot_is_not_stale_route_data(self):
         self.assertIsNone(load_routes().parse_routes(None))
         self.assertEqual(load_routes().parse_routes([]), {})
+
+    def test_route_flags_are_tristate_and_inactive_comes_from_ip_status(self):
+        ip = [
+            {
+                ".id": "*1",
+                "dst-address": "0.0.0.0/0",
+                "routing-table": "vpn",
+                "gateway": "wg",
+                "active": False,
+                "disabled": False,
+                "dynamic": False,
+            },
+            {
+                ".id": "*2",
+                "dst-address": "10.0.0.0/8",
+                "active": True,
+                "disabled": False,
+                "dynamic": True,
+            },
+            {
+                ".id": "*3",
+                "dst-address": "192.0.2.0/24",
+                "active": False,
+                "disabled": True,
+                "dynamic": False,
+            },
+        ]
+        routing = [
+            {
+                ".id": "*DIFFERENT",
+                "afi": "ip4",
+                "dst-address": "0.0.0.0/0",
+                "routing-table": "vpn",
+                "gateway": "wg",
+                "unreachable": "yes",
+                "static": "yes",
+                "hw-offloaded": "no",
+            },
+            {
+                "afi": "ip6",
+                "dst-address": "10.0.0.0/8",
+                "routing-table": "main",
+                "gateway": "",
+                "unreachable": True,
+            },
+        ]
+        routes = load_routes().parse_routes(ip, routing)
+        self.assertEqual(routes["*1"]["route-uid"], "*1".encode().hex())
+        self.assertEqual(routes["*1"]["inactive"], True)
+        self.assertEqual(routes["*1"]["unreachable"], True)
+        self.assertEqual(routes["*1"]["static"], True)
+        self.assertEqual(routes["*1"]["hw-offloaded"], False)
+        self.assertEqual(routes["*2"]["inactive"], False)
+        self.assertIsNone(routes["*2"]["unreachable"])
+        self.assertIsNone(routes["*2"]["static"])
+        self.assertIsNone(routes["*2"]["hw-offloaded"])
+        self.assertEqual(routes["*3"]["inactive"], False)
+
+    def test_duplicate_routing_candidates_do_not_assign_flags(self):
+        ip = [
+            {
+                ".id": "*1",
+                "dst-address": "0.0.0.0/0",
+                "routing-table": "vpn",
+                "gateway": "wg",
+                "active": False,
+                "disabled": False,
+                "dynamic": False,
+            }
+        ]
+        candidates = [
+            {
+                "afi": "ip4",
+                "dst-address": "0.0.0.0/0",
+                "routing-table": "vpn",
+                "gateway": "wg",
+                "unreachable": True,
+                "static": True,
+                "hw-offloaded": True,
+            },
+            {
+                "afi": "ip4",
+                "dst-address": "0.0.0.0/0",
+                "routing-table": "vpn",
+                "gateway": "wg",
+                "unreachable": False,
+                "static": False,
+                "hw-offloaded": False,
+            },
+        ]
+        route = load_routes().parse_routes(ip, candidates)["*1"]
+        for flag in ("unreachable", "static", "hw-offloaded"):
+            self.assertIsNone(route[flag])
+
+    def test_duplicate_ip_candidates_do_not_share_routing_flags(self):
+        ip = [
+            {
+                ".id": ident,
+                "dst-address": "0.0.0.0/0",
+                "routing-table": "vpn",
+                "gateway": "wg",
+                "active": False,
+                "disabled": False,
+                "dynamic": False,
+            }
+            for ident in ("*1", "*2")
+        ]
+        routing = [
+            {
+                "afi": "ip4",
+                "dst-address": "0.0.0.0/0",
+                "routing-table": "vpn",
+                "gateway": "wg",
+                "unreachable": True,
+            }
+        ]
+        for route in load_routes().parse_routes(ip, routing).values():
+            self.assertIsNone(route["unreachable"])
+
+    def test_missing_or_invalid_routing_flags_remain_unknown(self):
+        ip = [
+            {
+                ".id": "*1",
+                "dst-address": "0.0.0.0/0",
+                "active": True,
+                "disabled": False,
+                "dynamic": False,
+            }
+        ]
+        routing = [
+            {
+                "afi": "ip4",
+                "dst-address": "0.0.0.0/0",
+                "routing-table": "main",
+                "gateway": "",
+                "unreachable": "maybe",
+            }
+        ]
+        route = load_routes().parse_routes(ip, routing)["*1"]
+        self.assertIsNone(route["unreachable"])
+        self.assertIsNone(route["static"])
+        self.assertIsNone(route["hw-offloaded"])
+        self.assertIsNone(load_routes().parse_routes(ip, None)["*1"]["unreachable"])
+
+    def test_incomplete_cross_menu_identity_does_not_match(self):
+        ip = [
+            {
+                ".id": "*1",
+                "dst-address": "0.0.0.0/0",
+                "active": False,
+                "disabled": False,
+                "dynamic": False,
+            }
+        ]
+        routing = [
+            {
+                "afi": "ip4",
+                "dst-address": "0.0.0.0/0",
+                "routing-table": "main",
+                "gateway": "",
+                "unreachable": True,
+            }
+        ]
+        self.assertIsNone(load_routes().parse_routes(ip, routing)["*1"]["unreachable"])
 
     def test_coordinator_queries_read_only_and_clears_denied_snapshot(self):
         tree = ast.parse((PACKAGE / "coordinator.py").read_text())
@@ -150,9 +315,66 @@ class RouteStatusTest(unittest.TestCase):
                         },
                         "ignore_trap": True,
                     },
-                )
+                ),
+                (
+                    ("/routing/route",),
+                    {
+                        "command": "print",
+                        "args": {
+                            ".proplist": "afi,dst-address,routing-table,gateway,unreachable,static,hw-offloaded"
+                        },
+                        "ignore_trap": True,
+                    },
+                ),
             ],
         )
+
+    def test_coordinator_preserves_ip_routes_when_optional_routing_query_fails(self):
+        tree = ast.parse((PACKAGE / "coordinator.py").read_text())
+        klass = next(
+            n
+            for n in tree.body
+            if isinstance(n, ast.ClassDef) and n.name == "MikrotikCoordinator"
+        )
+        method = next(
+            n
+            for n in klass.body
+            if isinstance(n, ast.FunctionDef) and n.name == "get_routes"
+        )
+        method.decorator_list = []
+        namespace = {"parse_routes": load_routes().parse_routes}
+        exec(
+            compile(
+                ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[])),
+                "coordinator.py",
+                "exec",
+            ),
+            namespace,
+        )
+
+        class API:
+            def query(self, path, **kwargs):
+                if path == "/routing/route":
+                    return None
+                return [
+                    {
+                        ".id": "*1",
+                        "dst-address": "0.0.0.0/0",
+                        "active": False,
+                        "disabled": False,
+                        "dynamic": False,
+                    }
+                ]
+
+        class Coordinator:
+            api = API()
+            ds = {"route": None}
+            get_routes = namespace["get_routes"]
+
+        coordinator = Coordinator()
+        coordinator.get_routes()
+        self.assertEqual(coordinator.ds["route"]["*1"]["inactive"], True)
+        self.assertIsNone(coordinator.ds["route"]["*1"]["unreachable"])
 
     def test_route_entity_is_read_only_and_uses_routeros_identity(self):
         tree = ast.parse((PACKAGE / "binary_sensor_types.py").read_text())
@@ -190,6 +412,36 @@ class RouteStatusTest(unittest.TestCase):
         self.assertEqual(values["func"], "MikrotikBinarySensor")
         self.assertIn("routing-table", (PACKAGE / "binary_sensor_types.py").read_text())
         self.assertIn("immediate-gw", (PACKAGE / "binary_sensor_types.py").read_text())
+
+    def test_existing_route_sensor_exposes_all_flags_as_attributes(self):
+        tree = ast.parse((PACKAGE / "binary_sensor_types.py").read_text())
+        attrs = next(
+            n
+            for n in tree.body
+            if isinstance(n, ast.Assign)
+            and any(
+                isinstance(t, ast.Name) and t.id == "DEVICE_ATTRIBUTES_ROUTE"
+                for t in n.targets
+            )
+        )
+        exposed = ast.literal_eval(attrs.value)
+        for flag in (
+            "active",
+            "inactive",
+            "unreachable",
+            "static",
+            "hw-offloaded",
+            "disabled",
+            "dynamic",
+        ):
+            self.assertIn(flag, exposed)
+
+    def test_manifest_and_docs_describe_route_flags(self):
+        manifest = json.loads((PACKAGE / "manifest.json").read_text())
+        self.assertEqual(manifest["version"], "2.3.4")
+        readme = (ROOT / "README.md").read_text()
+        self.assertIn("U (unreachable)", readme)
+        self.assertIn("ambiguous", readme)
 
     def test_route_option_is_opt_in_in_setup_and_polling(self):
         const = (PACKAGE / "const.py").read_text()
