@@ -2,7 +2,7 @@
 
 ## About this fork
 
-This Home Assistant custom integration fork tracks the upstream `master` of [`tomaae/homeassistant-mikrotik_router`](https://github.com/tomaae/homeassistant-mikrotik_router) and adds optional, read-only static route status entities for RouterOS v7. It also retains the existing login compatibility fix while awaiting upstream adoption.
+This Home Assistant custom integration fork tracks the upstream `master` of [`tomaae/homeassistant-mikrotik_router`](https://github.com/tomaae/homeassistant-mikrotik_router) and adds optional, read-only IPv4 route status entities for RouterOS v7. It also retains the existing login compatibility fix while awaiting upstream adoption.
 
 It is not a replacement for the upstream project. The route feature is opt-in, and this fork is not yet a published HACS release.
 
@@ -79,8 +79,8 @@ Monitor and control status on each Mikrotik interface, both lan and wlan. Both p
 ![Interface Switch](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/interface_switch.png)
 ![Interface Sensor](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/interface_sensor.png)
 
-## Static routes (RouterOS v7; fork feature)
-Enable **Static route active sensors (RouterOS v7)** under the integration's options → sensor selection. This option defaults to off. The integration reads `/ip/route print` on each regular scan and creates a **Route active** diagnostic binary sensor for each static IPv4 route, including disabled and inactive routes. `on` means RouterOS reports the route active and not disabled; `off` does not prove that a VPN tunnel or Internet access is healthy. Attributes include destination, routing table, configured gateway, resolved immediate gateway, comment, and disabled status. Dynamic routes are excluded; routes with the same destination/table retain separate entities by RouterOS `.id`.
+## IPv4 routes (RouterOS v7; fork feature)
+Enable **IPv4 route active sensors (RouterOS v7)** under the integration's options → sensor selection. This option defaults to off. The integration reads `/ip/route print` on each regular scan and creates a **Route active** diagnostic binary sensor for each IPv4 route (static or dynamic), including disabled and inactive routes. `on` means RouterOS reports the route active and not disabled; `off` does not prove that a VPN tunnel or Internet access is healthy. Attributes include destination, routing table, configured gateway, resolved immediate gateway, comment, dynamic, and disabled status. Routes with the same destination/table retain separate entities by RouterOS `.id`.
 
 For a NordVPN USA WireGuard policy route, distinguish it by its routing table, gateway, and comment. This is monitoring only: no route changes, tunnel checks, or failover actions are performed. If `/ip/route` is unavailable or denied, route entities become unavailable without treating the router as disconnected; the RouterOS API user needs read access. RouterOS `.id` may change if a route is deleted/re-created or after a reboot, which can create a new HA entity ID. RouterOS v6 is not supported by this feature.
 

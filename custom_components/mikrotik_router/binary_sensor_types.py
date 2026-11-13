@@ -126,6 +126,7 @@ DEVICE_ATTRIBUTES_ROUTE = [
     "immediate-gw",
     "comment",
     "disabled",
+    "dynamic",
 ]
 
 
@@ -158,7 +159,7 @@ SENSOR_TYPES: tuple[BinarySensorEntityDescription, ...] = (
         ha_group="System",
         data_path="route",
         data_attribute="active",
-        data_name="dst-address",
+        data_name="route-name",
         data_uid="route-uid",
         data_reference="route-uid",
         data_attributes_list=DEVICE_ATTRIBUTES_ROUTE,

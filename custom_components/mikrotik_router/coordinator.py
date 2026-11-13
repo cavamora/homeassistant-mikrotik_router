@@ -414,7 +414,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
     @property
     def option_sensor_routes(self):
-        """Whether to poll static route status (opt-in)."""
+        """Whether to poll IPv4 route status (opt-in)."""
         return self.config_entry.options.get(CONF_SENSOR_ROUTES, DEFAULT_SENSOR_ROUTES)
 
     # ---------------------------
@@ -1445,7 +1445,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     #   get_netwatch
     # ---------------------------
     def get_routes(self) -> None:
-        """Read RouterOS v7 IPv4 static route status without changing routes."""
+        """Read RouterOS v7 IPv4 route status without changing routes."""
         self.ds["route"] = parse_routes(
             self.api.query(
                 "/ip/route",

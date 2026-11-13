@@ -80,7 +80,7 @@
                     "sensor_filter": "Filter switches",
                     "sensor_client_captive": "Captive portal data",
                     "sensor_netwatch_tracker": "Netwatch tracker sensors",
-                    "sensor_routes": "Static route active sensors (RouterOS v7)"
+                    "sensor_routes": "IPv4 route active sensors (RouterOS v7)"
                 },
                 "title": "Mikrotik Router options (2\/2)",
                 "description": "Enable sensors and switches"

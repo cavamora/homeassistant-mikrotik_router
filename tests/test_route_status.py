@@ -17,19 +17,22 @@ def load_routes():
 
 
 class RouteStatusTest(unittest.TestCase):
-    def test_static_routes_have_distinct_stable_ids_and_actual_active_state(self):
+    def test_ipv4_routes_have_distinct_ids_and_actual_active_state(self):
         rows = [
             {".id": "*A", "dst-address": "0.0.0.0/0", "routing-table": "usa", "gateway": "nord-wg", "immediate-gw": "nord-wg", "comment": "Nord USA", "active": True, "disabled": False, "dynamic": False},
             {".id": "*B", "dst-address": "0.0.0.0/0", "routing-table": "usa", "gateway": "nord-wg", "active": False, "disabled": False, "dynamic": False},
             {".id": "*C", "dst-address": "10.0.0.0/8", "active": True, "disabled": False, "dynamic": True},
         ]
         result = load_routes().parse_routes(rows)
-        self.assertEqual(set(result), {"*A", "*B"})
+        self.assertEqual(set(result), {"*A", "*B", "*C"})
         self.assertTrue(result["*A"]["active"])
         self.assertFalse(result["*B"]["active"])
         self.assertNotEqual(result["*A"]["route-uid"], result["*B"]["route-uid"])
         self.assertEqual(result["*A"]["comment"], "Nord USA")
         self.assertEqual(result["*A"]["immediate-gw"], "nord-wg")
+        self.assertTrue(result["*C"]["dynamic"])
+        self.assertIn("usa", result["*A"]["route-name"])
+        self.assertIn("nord-wg", result["*A"]["route-name"])
 
     def test_disabled_and_unknown_flags_never_claim_active(self):
         rows = [
@@ -79,6 +82,7 @@ class RouteStatusTest(unittest.TestCase):
         self.assertEqual(len(routes), 1)
         values = {k.arg: ast.literal_eval(k.value) for k in routes[0].keywords if isinstance(k.value, (ast.Constant, ast.List))}
         self.assertEqual(values["data_path"], "route")
+        self.assertEqual(values["data_name"], "route-name")
         self.assertEqual(values["data_attribute"], "active")
         self.assertEqual(values["data_reference"], "route-uid")
         self.assertEqual(values["ha_group"], "System")
