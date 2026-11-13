@@ -1458,7 +1458,15 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                     ".proplist": ".id,dst-address,routing-table,gateway,immediate-gw,comment,active,disabled,dynamic"
                 },
                 ignore_trap=True,
-            )
+            ),
+            self.api.query(
+                "/routing/route",
+                command="print",
+                args={
+                    ".proplist": "afi,dst-address,routing-table,gateway,unreachable,static,hw-offloaded"
+                },
+                ignore_trap=True,
+            ),
         )
 
     def get_netwatch(self) -> None:

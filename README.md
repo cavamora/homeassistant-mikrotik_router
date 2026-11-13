@@ -227,6 +227,20 @@ Second options page:
 
 Select sensors you want to use in Home Assistant.
 
+### IPv4 route flags (RouterOS v7)
+
+Enable the opt-in route sensors to see each route's **A (active)** state as a
+diagnostic binary sensor. Its attributes include **I (inactive)**,
+**U (unreachable)**, **S (static)**, **H (hw-offloaded)**, disabled, and dynamic.
+Inactive is derived from `/ip/route` when neither active nor disabled; the
+other three flags come from a read-only `/routing/route` query. Routes are
+matched across the menus only when destination, routing table and gateway are
+explicit and unique on both sides; their `.id` values are not assumed equal.
+If that query is denied or a match is missing or ambiguous, U/S/H attributes
+are `null` (unknown), not `false`. The existing route entity ID and name remain
+unchanged. Active means a route is selected, not that a VPN peer or Internet
+connection is healthy. No router configuration is changed.
+
 # Development
 
 ## Translation

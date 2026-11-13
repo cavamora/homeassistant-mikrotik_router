@@ -125,8 +125,13 @@ DEVICE_ATTRIBUTES_ROUTE = [
     "gateway",
     "immediate-gw",
     "comment",
+    "active",
     "disabled",
     "dynamic",
+    "inactive",
+    "unreachable",
+    "static",
+    "hw-offloaded",
 ]
 
 
