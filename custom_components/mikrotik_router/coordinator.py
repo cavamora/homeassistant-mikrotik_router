@@ -68,9 +68,12 @@ from .const import (
     DEFAULT_SENSOR_ENVIRONMENT,
     CONF_SENSOR_NETWATCH_TRACKER,
     DEFAULT_SENSOR_NETWATCH_TRACKER,
+    CONF_SENSOR_ROUTES,
+    DEFAULT_SENSOR_ROUTES,
 )
 from .apiparser import parse_api
 from .mikrotikapi import MikrotikAPI
+from .route_status import parse_routes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -265,6 +268,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             "ups": {},
             "gps": {},
             "netwatch": {},
+            "route": None,
         }
 
         self.notified_flags = []
@@ -407,6 +411,11 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         return self.config_entry.options.get(
             CONF_SENSOR_NETWATCH_TRACKER, DEFAULT_SENSOR_NETWATCH_TRACKER
         )
+
+    @property
+    def option_sensor_routes(self):
+        """Whether to poll IPv4 route status (opt-in)."""
+        return self.config_entry.options.get(CONF_SENSOR_ROUTES, DEFAULT_SENSOR_ROUTES)
 
     # ---------------------------
     #   option_sensor_ppp
@@ -684,6 +693,15 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
 
         if self.api.connected() and self.option_sensor_netwatch:
             await self.hass.async_add_executor_job(self.get_netwatch)
+
+        if (
+            self.api.connected()
+            and self.option_sensor_routes
+            and self.major_fw_version >= 7
+        ):
+            await self.hass.async_add_executor_job(self.get_routes)
+        else:
+            self.ds["route"] = None
 
         if self.api.connected() and self.support_ppp and self.option_sensor_ppp:
             await self.hass.async_add_executor_job(self.get_ppp)
@@ -1430,6 +1448,19 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
     # ---------------------------
     #   get_netwatch
     # ---------------------------
+    def get_routes(self) -> None:
+        """Read RouterOS v7 IPv4 route status without changing routes."""
+        self.ds["route"] = parse_routes(
+            self.api.query(
+                "/ip/route",
+                command="print",
+                args={
+                    ".proplist": ".id,dst-address,routing-table,gateway,immediate-gw,comment,active,disabled,dynamic"
+                },
+                ignore_trap=True,
+            )
+        )
+
     def get_netwatch(self) -> None:
         """Get netwatch data from Mikrotik"""
         self.ds["netwatch"] = parse_api(
