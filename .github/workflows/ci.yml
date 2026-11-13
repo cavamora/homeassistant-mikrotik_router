@@ -35,10 +35,10 @@ jobs:
     steps:
       - name: Check out code from GitHub
         uses: actions/checkout@v7
-      - name: Set up Python 3.14
+      - name: Set up Python 3.13
         uses: actions/setup-python@v7
         with:
-          python-version: "3.14.2"
+          python-version: "3.13"
       - name: Install lint dependencies
         run: |
           python -m pip install --upgrade pip
@@ -58,7 +58,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.14.2"
+          python-version: "3.13"
       - name: Run Bandit
         run: |
           python -m pip install --upgrade pip bandit

@@ -694,7 +694,11 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
         if self.api.connected() and self.option_sensor_netwatch:
             await self.hass.async_add_executor_job(self.get_netwatch)
 
-        if self.api.connected() and self.option_sensor_routes and self.major_fw_version >= 7:
+        if (
+            self.api.connected()
+            and self.option_sensor_routes
+            and self.major_fw_version >= 7
+        ):
             await self.hass.async_add_executor_job(self.get_routes)
         else:
             self.ds["route"] = None
@@ -1450,7 +1454,9 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
             self.api.query(
                 "/ip/route",
                 command="print",
-                args={".proplist": ".id,dst-address,routing-table,gateway,immediate-gw,comment,active,disabled,dynamic"},
+                args={
+                    ".proplist": ".id,dst-address,routing-table,gateway,immediate-gw,comment,active,disabled,dynamic"
+                },
                 ignore_trap=True,
             )
         )

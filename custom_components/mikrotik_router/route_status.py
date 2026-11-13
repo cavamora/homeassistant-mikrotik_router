@@ -35,7 +35,11 @@ def parse_routes(rows):
             "dst-address": destination,
             "routing-table": table,
             "gateway": gateway,
-            "route-name": f"{destination} [{table}] via {gateway}" if gateway else f"{destination} [{table}]",
+            "route-name": (
+                f"{destination} [{table}] via {gateway}"
+                if gateway
+                else f"{destination} [{table}]"
+            ),
             "immediate-gw": row.get("immediate-gw", ""),
             "comment": row.get("comment", ""),
             "active": active and not disabled,
