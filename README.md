@@ -4,7 +4,7 @@
 
 This Home Assistant custom integration fork tracks the upstream `master` of [`tomaae/homeassistant-mikrotik_router`](https://github.com/tomaae/homeassistant-mikrotik_router) and adds optional, read-only IPv4 route status entities for RouterOS v7. It also retains the existing login compatibility fix while awaiting upstream adoption.
 
-It is not a replacement for the upstream project. The route feature is opt-in, and this fork is not yet a published HACS release.
+It is not a replacement for the upstream project. The route feature is opt-in and is distributed through this fork's HACS release.
 
 ---
 
