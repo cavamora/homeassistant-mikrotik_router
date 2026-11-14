@@ -463,7 +463,7 @@ class RouteStatusTest(unittest.TestCase):
         self.assertEqual(values["data_name"], "route-name")
         self.assertEqual(values["data_attribute"], "active")
         self.assertEqual(values["data_reference"], "route-uid")
-        self.assertEqual(values["ha_group"], "Rotas")
+        self.assertEqual(values["ha_group"], "Routes")
         self.assertTrue(values["data_name_comment"])
         self.assertEqual(values["func"], "MikrotikBinarySensor")
         self.assertIn("routing-table", (PACKAGE / "binary_sensor_types.py").read_text())
@@ -488,7 +488,7 @@ class RouteStatusTest(unittest.TestCase):
                     ]
                 )[route_id],
                 entity_description=SimpleNamespace(
-                    ha_group="Rotas",
+                    ha_group="Routes",
                     ha_connection=None,
                     ha_connection_value=None,
                     data_reference="route-uid",
@@ -511,7 +511,10 @@ class RouteStatusTest(unittest.TestCase):
         other = device_info(entity("SERIAL-B", "Office", "*1"))
         self.assertEqual(first["identifiers"], second["identifiers"])
         self.assertNotEqual(first["identifiers"], other["identifiers"])
-        self.assertEqual(first["name"], "Home Rotas")
+        self.assertEqual(first["name"], "Home Routes")
+        # Preserve the old device identifier so 2.3.5 installations do not
+        # create a second device when only its displayed name changes.
+        self.assertEqual(first["identifiers"], {("mikrotik_router", "SERIAL-A-Rotas")})
         self.assertEqual(first["via_device_id"], "router-device")
         self.assertNotIn("connections", first)
 
@@ -620,11 +623,11 @@ class RouteStatusTest(unittest.TestCase):
 
     def test_manifest_and_docs_describe_route_flags(self):
         manifest = json.loads((PACKAGE / "manifest.json").read_text())
-        self.assertEqual(manifest["version"], "2.3.5")
+        self.assertEqual(manifest["version"], "2.3.6")
         readme = (ROOT / "README.md").read_text()
         self.assertIn("U (unreachable)", readme)
         self.assertIn("ambiguous", readme)
-        self.assertIn("Rotas", readme)
+        self.assertIn("<router name> Routes", readme)
         self.assertIn("entity_id", readme)
 
     def test_route_option_is_opt_in_in_setup_and_polling(self):
