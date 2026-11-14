@@ -80,7 +80,7 @@ Monitor and control status on each Mikrotik interface, both lan and wlan. Both p
 ![Interface Sensor](https://raw.githubusercontent.com/tomaae/homeassistant-mikrotik_router/master/docs/assets/images/ui/interface_sensor.png)
 
 ## IPv4 routes (RouterOS v7; fork feature)
-Enable **IPv4 route active sensors (RouterOS v7)** under the integration's options → sensor selection. This option defaults to off. The integration reads `/ip/route print` on each regular scan and creates a **Route active** diagnostic binary sensor for commented routes that are not marked dynamic, including disabled and inactive routes. A missing dynamic flag does not hide a commented route. `on` means RouterOS reports the route active and not disabled; `off` means its A flag is absent/false or its I/X flag is true. `off` does not prove that a VPN tunnel or Internet access is healthy. Unknown or malformed status values remain unavailable. Attributes include destination, routing table, configured gateway, resolved immediate gateway, comment, dynamic, disabled, and route flags when available. Routes with the same destination/table retain separate entities by RouterOS `.id`.
+Enable **IPv4 route active sensors (RouterOS v7)** under the integration's options → sensor selection. This option defaults to off. The integration reads `/ip/route print` on each regular scan and creates a **Route available** diagnostic binary sensor for commented routes that are not marked dynamic, including disabled and inactive routes. A missing dynamic flag does not hide a commented route. `on` means the route is enabled and its **I (inactive)** flag is false, including an unselected standby route (`A=false`). `off` means I or X (disabled) is true. An unknown/malformed I or X value makes the entity unavailable. The A (selected) flag remains an attribute; U (unreachable) can be unknown when the optional `/routing/route` query is unavailable or cannot be matched. `on` is not an end-to-end ISP, VPN, or Internet health check. Routes with the same destination/table retain separate entities by RouterOS `.id`.
 
 Routes appear together under a dedicated **<router name> Routes** Home Assistant device, linked to that router's system device rather than placed on hEX or split into one device per route. A route comment becomes its friendly entity name when present; without a comment the name falls back to destination, routing table and gateway. Existing route unique IDs are unchanged so existing registry entities should move to Routes without breaking automation references. Home Assistant generally preserves an existing registry `entity_id` even when the friendly name changes; rename the entity ID manually if desired. The device migration and full route inventory require verification on a running router/Home Assistant installation.
 
@@ -233,17 +233,20 @@ Select sensors you want to use in Home Assistant.
 
 ### IPv4 route flags (RouterOS v7)
 
-Enable the opt-in route sensors to see each route's **A (active)** state as a
-diagnostic binary sensor. Its attributes include **I (inactive)**,
+Enable the opt-in route sensors to see whether each route is **available (not I/X)**
+as a diagnostic binary sensor, even when an alternative route wins by distance.
+The separate **A (active)** flag remains an attribute. Other attributes include **I (inactive)**,
 **U (unreachable)**, **S (static)**, **H (hw-offloaded)**, disabled, and dynamic.
-Inactive is derived from `/ip/route` when neither active nor disabled; the
-other three flags come from a read-only `/routing/route` query. Routes are
+Inactive is read from `/ip/route`; an unset I flag is false, and the absence
+of A alone does not imply inactivity. The U/S/H flags come from a read-only
+`/routing/route` query. Routes are
 matched across the menus only when destination, routing table and gateway are
 explicit and unique on both sides; their `.id` values are not assumed equal.
 If that query is denied or a match is missing or ambiguous, U/S/H attributes
-are `null` (unknown), not `false`. The existing route entity ID and name remain
-unchanged. Active means a route is selected, not that a VPN peer or Internet
-connection is healthy. No router configuration is changed.
+are `null` (unknown), not `false`. Existing route entity unique IDs remain
+unchanged, but their on/off meaning changes from selected to available; review
+automations that relied on `on` meaning A. A means a route is selected, not that
+a VPN peer or Internet connection is healthy. No router configuration is changed.
 
 # Development
 

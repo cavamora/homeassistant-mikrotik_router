@@ -157,13 +157,13 @@ class MikrotikBinarySensorEntityDescription(BinarySensorEntityDescription):
 SENSOR_TYPES: tuple[BinarySensorEntityDescription, ...] = (
     MikrotikBinarySensorEntityDescription(
         key="route_active",
-        name="Route active",
+        name="Route available",
         icon_enabled="mdi:routes",
         icon_disabled="mdi:routes",
         entity_category=EntityCategory.DIAGNOSTIC,
         ha_group="Routes",
         data_path="route",
-        data_attribute="active",
+        data_attribute="usable",
         data_name="route-name",
         data_name_comment=True,
         data_uid="route-uid",

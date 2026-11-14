@@ -104,10 +104,11 @@ class RouteStatusTest(unittest.TestCase):
 
     def test_explicit_inactive_route_without_disabled_value_is_off(self):
         route = load_routes().parse_routes(
-            [{".id": "*I", "active": "false", "comment": "USHI"}]
+            [{".id": "*I", "active": "false", "inactive": "true", "comment": "USHI"}]
         )["*I"]
         self.assertIs(route["active"], False)
         self.assertIs(route["inactive"], True)
+        self.assertIs(route["usable"], False)
         self.assertIs(route["disabled"], False)
 
     def test_routeros_ushi_route_without_active_flag_is_off_with_details(self):
@@ -132,7 +133,8 @@ class RouteStatusTest(unittest.TestCase):
             [{".id": "*I", "comment": "Backup ISP", "dst-address": "0.0.0.0/0"}]
         )["*I"]
         self.assertIs(route["active"], False)
-        self.assertIs(route["inactive"], True)
+        self.assertIs(route["inactive"], False)
+        self.assertIs(route["usable"], True)
         self.assertEqual(route["comment"], "Backup ISP")
 
     def test_invalid_flag_value_is_not_silently_treated_as_false(self):
@@ -392,6 +394,7 @@ class RouteStatusTest(unittest.TestCase):
                 "routing-table": "vpn",
                 "gateway": "wg",
                 "active": False,
+                "inactive": True,
                 "disabled": False,
                 "dynamic": False,
             },
@@ -440,6 +443,28 @@ class RouteStatusTest(unittest.TestCase):
         self.assertIsNone(routes["*2"]["static"])
         self.assertIsNone(routes["*2"]["hw-offloaded"])
         self.assertEqual(routes["*3"]["inactive"], False)
+
+    def test_route_binary_state_tracks_usable_standby_not_selected(self):
+        rows = [
+            {".id": "*A", "active": False, "inactive": False, "disabled": False},
+            {".id": "*B", "active": False, "inactive": True, "disabled": False},
+            {".id": "*C", "active": False, "inactive": False, "disabled": True},
+            {".id": "*D", "active": True, "inactive": False, "disabled": False},
+            {".id": "*E", "active": "maybe", "inactive": "maybe", "disabled": False},
+        ]
+        routes = load_routes().parse_routes(rows)
+        self.assertIs(routes["*A"]["usable"], True)
+        self.assertIs(routes["*B"]["usable"], False)
+        self.assertIs(routes["*C"]["usable"], False)
+        self.assertIs(routes["*D"]["usable"], True)
+        self.assertIsNone(routes["*E"]["usable"])
+
+    def test_unset_inactive_flag_is_standby_not_failed(self):
+        route = load_routes().parse_routes(
+            [{".id": "*S", "active": False, "disabled": False}]
+        )["*S"]
+        self.assertIs(route["inactive"], False)
+        self.assertIs(route["usable"], True)
 
     def test_duplicate_routing_candidates_do_not_assign_flags(self):
         ip = [
@@ -655,8 +680,11 @@ class RouteStatusTest(unittest.TestCase):
 
         coordinator = Coordinator()
         coordinator.get_routes()
-        self.assertEqual(coordinator.ds["route"]["*1"]["inactive"], True)
-        self.assertIsNone(coordinator.ds["route"]["*1"]["unreachable"])
+        snapshot = coordinator.ds["route"]
+        assert snapshot is not None
+        self.assertEqual(snapshot["*1"]["inactive"], False)
+        self.assertEqual(snapshot["*1"]["usable"], True)
+        self.assertIsNone(snapshot["*1"]["unreachable"])
 
     def test_route_entity_is_read_only_and_uses_routeros_identity(self):
         tree = ast.parse((PACKAGE / "binary_sensor_types.py").read_text())
@@ -688,7 +716,7 @@ class RouteStatusTest(unittest.TestCase):
         }
         self.assertEqual(values["data_path"], "route")
         self.assertEqual(values["data_name"], "route-name")
-        self.assertEqual(values["data_attribute"], "active")
+        self.assertEqual(values["data_attribute"], "usable")
         self.assertEqual(values["data_reference"], "route-uid")
         self.assertEqual(values["ha_group"], "Routes")
         self.assertTrue(values["data_name_comment"])
@@ -850,7 +878,7 @@ class RouteStatusTest(unittest.TestCase):
 
     def test_manifest_and_docs_describe_route_flags(self):
         manifest = json.loads((PACKAGE / "manifest.json").read_text())
-        self.assertEqual(manifest["version"], "2.3.7")
+        self.assertEqual(manifest["version"], "2.3.8")
         readme = (ROOT / "README.md").read_text()
         self.assertIn("U (unreachable)", readme)
         self.assertIn("ambiguous", readme)
