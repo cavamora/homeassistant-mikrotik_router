@@ -339,15 +339,16 @@ class MikrotikEntity(CoordinatorEntity[_MikrotikCoordinatorT], Entity):
             config_entry_id=self._config_entry.entry_id,
         )
 
-        if self.entity_description.ha_group == "Rotas":
+        if self.entity_description.ha_group == "Routes":
             return DeviceInfo(
                 identifiers={
                     (
                         DOMAIN,
+                        # Keep the identifier from v2.3.5 to rename in place.
                         f"{self.coordinator.data['routerboard']['serial-number']}-Rotas",
                     )
                 },
-                name=f"{self._inst} Rotas",
+                name=f"{self._inst} Routes",
                 manufacturer=f"{self.coordinator.data['resource']['platform']}",
                 via_device_id=via_device_id,
             )
