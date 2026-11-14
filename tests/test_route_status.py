@@ -55,6 +55,33 @@ def load_entity_method(name):
 
 
 class RouteStatusTest(unittest.TestCase):
+    def test_disabled_static_route_without_active_value_is_off_with_attributes(self):
+        # /ip/route may omit a requested status property with no value.
+        row = {
+            ".id": "*80000024",
+            "dst-address": "0.0.0.0/0",
+            "routing-table": "main",
+            "gateway": "192.0.2.1",
+            "comment": "FORCAR PELA CLARO (QUEM TA NA LISTA)",
+            "disabled": "true",
+            "dynamic": "false",
+        }
+        route = load_routes().parse_routes([row])[row[".id"]]
+        self.assertIs(route["active"], False)
+        self.assertIs(route["disabled"], True)
+        self.assertIs(route["inactive"], False)
+        self.assertEqual(route["comment"], row["comment"])
+        self.assertEqual(route["gateway"], row["gateway"])
+        self.assertEqual(route["route-uid"], row[".id"].encode().hex())
+
+    def test_explicit_inactive_route_without_disabled_value_is_off(self):
+        route = load_routes().parse_routes([
+            {".id": "*I", "active": "false", "comment": "USHI"}
+        ])["*I"]
+        self.assertIs(route["active"], False)
+        self.assertIsNone(route["inactive"])
+        self.assertIsNone(route["disabled"])
+
     def test_ipv4_routes_have_distinct_ids_and_actual_active_state(self):
         rows = [
             {
@@ -149,7 +176,7 @@ class RouteStatusTest(unittest.TestCase):
         routes = load_routes().parse_routes(rows)
         self.assertEqual(set(routes), {"*A", "*B", "*C", "*D"})
         self.assertFalse(routes["*A"]["active"])
-        self.assertIsNone(routes["*B"]["active"])
+        self.assertIs(routes["*B"]["active"], False)
         self.assertIsNone(routes["*C"]["dynamic"])
         self.assertEqual(routes["*C"]["comment"], "Static unknown")
 

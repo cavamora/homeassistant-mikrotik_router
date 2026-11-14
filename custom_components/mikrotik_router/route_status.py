@@ -73,17 +73,23 @@ def parse_routes(rows, routing_rows=None):
             ),
             "immediate-gw": row.get("immediate-gw", ""),
             "comment": row.get("comment", ""),
+            # Either observed false active or true disabled proves the route is off;
+            # a missing flag alone does not prove its opposite.
             "active": (
-                active and not disabled
-                if active is not None and disabled is not None
+                False
+                if disabled is True or active is False
+                else True
+                if active is True and disabled is False
                 else None
             ),
             "disabled": disabled,
             "dynamic": dynamic,
             # /ip/route's X/A/I status is exclusive; disabled is not inactive.
             "inactive": (
-                not active and not disabled
-                if active is not None and disabled is not None
+                False
+                if disabled is True or active is True
+                else True
+                if active is False and disabled is False
                 else None
             ),
             # Missing, invalid and ambiguous /routing/route observations are unknown.
