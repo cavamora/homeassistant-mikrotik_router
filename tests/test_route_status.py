@@ -53,6 +53,25 @@ def load_entity_method(name):
     )
     return namespace[name]
 
+def load_skip_sensor():
+    tree = ast.parse((PACKAGE / "entity.py").read_text())
+    method = next(
+        n for n in tree.body
+        if isinstance(n, ast.FunctionDef) and n.name == "_skip_sensor"
+    )
+    namespace = {
+        "CONF_SENSOR_PORT_TRAFFIC": "port_traffic",
+        "DEFAULT_SENSOR_PORT_TRAFFIC": False,
+        "CONF_SENSOR_PORT_TRACKER": "port_tracker",
+        "DEFAULT_SENSOR_PORT_TRACKER": False,
+        "CONF_SENSOR_NETWATCH_TRACKER": "netwatch_tracker",
+        "DEFAULT_SENSOR_NETWATCH_TRACKER": False,
+        "CONF_TRACK_HOSTS": "track_hosts",
+        "DEFAULT_TRACK_HOSTS": False,
+    }
+    exec(compile(ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[])), "entity.py", "exec"), namespace)
+    return namespace["_skip_sensor"]
+
 
 class RouteStatusTest(unittest.TestCase):
     def test_disabled_static_route_without_active_value_is_off_with_attributes(self):
@@ -81,6 +100,21 @@ class RouteStatusTest(unittest.TestCase):
         self.assertIs(route["active"], False)
         self.assertIsNone(route["inactive"])
         self.assertIsNone(route["disabled"])
+
+    def test_only_explicitly_static_commented_routes_are_discovered(self):
+        rows = [
+            {".id": "*A", "comment": "Backup ISP", "dynamic": False, "active": False},
+            {".id": "*B", "comment": "Disabled ISP", "dynamic": "no", "disabled": True},
+            {".id": "*C", "comment": "Dynamic ISP", "dynamic": True},
+            {".id": "*D", "comment": "", "dynamic": False},
+            {".id": "*E", "comment": "   ", "dynamic": False},
+            {".id": "*F", "comment": "Unknown flag", "active": False},
+        ]
+        data = load_routes().parse_routes(rows)
+        description = SimpleNamespace(data_path="route", func="MikrotikBinarySensor")
+        skip = load_skip_sensor()
+        accepted = {uid for uid in data if not skip(SimpleNamespace(options={}), description, data, uid)}
+        self.assertEqual(accepted, {"*A", "*B"})
 
     def test_ipv4_routes_have_distinct_ids_and_actual_active_state(self):
         rows = [

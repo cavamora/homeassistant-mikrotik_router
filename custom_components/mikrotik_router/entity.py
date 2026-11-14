@@ -39,6 +39,14 @@ _LOGGER = getLogger(__name__)
 
 
 def _skip_sensor(config_entry, entity_description, data, uid) -> bool:
+    if entity_description.data_path == "route":
+        route = data[uid]
+        # Discovery is limited to explicitly static routes with a real comment.
+        # Never infer a missing/unknown dynamic flag to be static.
+        return route.get("dynamic") is not False or not str(
+            route.get("comment") or ""
+        ).strip()
+
     # Sensors
     if (
         entity_description.func == "MikrotikInterfaceTrafficSensor"
