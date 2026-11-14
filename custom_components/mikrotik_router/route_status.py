@@ -48,7 +48,7 @@ def parse_routes(rows, routing_rows=None):
         active = _flag(row.get("active"))
         disabled = _flag(row.get("disabled"))
         dynamic = _flag(row.get("dynamic"))
-        if not route_id or active is None or disabled is None or dynamic is None:
+        if not route_id:
             continue
         key = _route_key(row)
         routing = (
@@ -73,11 +73,19 @@ def parse_routes(rows, routing_rows=None):
             ),
             "immediate-gw": row.get("immediate-gw", ""),
             "comment": row.get("comment", ""),
-            "active": active and not disabled,
+            "active": (
+                active and not disabled
+                if active is not None and disabled is not None
+                else None
+            ),
             "disabled": disabled,
             "dynamic": dynamic,
             # /ip/route's X/A/I status is exclusive; disabled is not inactive.
-            "inactive": not active and not disabled,
+            "inactive": (
+                not active and not disabled
+                if active is not None and disabled is not None
+                else None
+            ),
             # Missing, invalid and ambiguous /routing/route observations are unknown.
             "unreachable": _flag(routing.get("unreachable")),
             "static": _flag(routing.get("static")),

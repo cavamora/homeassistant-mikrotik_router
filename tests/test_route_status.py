@@ -4,6 +4,7 @@ import ast
 import importlib.util
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +19,39 @@ def load_routes():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def load_entity_method(name):
+    """Exercise the real entity method without importing the HA runtime."""
+    tree = ast.parse((PACKAGE / "entity.py").read_text())
+    klass = next(
+        n
+        for n in tree.body
+        if isinstance(n, ast.ClassDef) and n.name == "MikrotikEntity"
+    )
+    method = next(
+        n for n in klass.body if isinstance(n, ast.FunctionDef) and n.name == name
+    )
+    method.decorator_list = []
+    namespace = {
+        "DeviceInfo": dict,
+        "DOMAIN": "mikrotik_router",
+        "CONF_SSL": "ssl",
+        "CONF_HOST": "host",
+        "device_registry": SimpleNamespace(
+            async_get_device_id_by_identifier=lambda *args, **kwargs: "router-device"
+        ),
+        "slugify": lambda value: value.replace("*", "").replace(" ", "_"),
+    }
+    exec(
+        compile(
+            ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[])),
+            "entity.py",
+            "exec",
+        ),
+        namespace,
+    )
+    return namespace[name]
 
 
 class RouteStatusTest(unittest.TestCase):
@@ -93,10 +127,31 @@ class RouteStatusTest(unittest.TestCase):
             {"dst-address": "5.5.5.0/24", "active": True},
         ]
         result = load_routes().parse_routes(rows)
-        # Missing active is unknown, never silently reported as false.
-        self.assertEqual(set(result), {"*1", "*2"})
+        # A route with an ID stays visible even when optional flags are absent.
+        self.assertEqual(set(result), {"*1", "*2", "*3", "*4"})
         self.assertFalse(result["*1"]["active"])
         self.assertFalse(result["*2"]["active"])
+        self.assertIsNone(result["*3"]["active"])
+        self.assertIsNone(result["*4"]["active"])
+
+    def test_all_commented_non_dynamic_routes_survive_missing_flags(self):
+        rows = [
+            {".id": "*A", "comment": "VPN fallback", "dynamic": False, "active": False},
+            {
+                ".id": "*B",
+                "comment": "Disabled path",
+                "disabled": True,
+                "dynamic": False,
+            },
+            {".id": "*C", "comment": "Static unknown", "active": False},
+            {".id": "*D", "comment": "Dynamic path", "dynamic": True},
+        ]
+        routes = load_routes().parse_routes(rows)
+        self.assertEqual(set(routes), {"*A", "*B", "*C", "*D"})
+        self.assertFalse(routes["*A"]["active"])
+        self.assertIsNone(routes["*B"]["active"])
+        self.assertIsNone(routes["*C"]["dynamic"])
+        self.assertEqual(routes["*C"]["comment"], "Static unknown")
 
     def test_unavailable_snapshot_is_not_stale_route_data(self):
         self.assertIsNone(load_routes().parse_routes(None))
@@ -408,10 +463,137 @@ class RouteStatusTest(unittest.TestCase):
         self.assertEqual(values["data_name"], "route-name")
         self.assertEqual(values["data_attribute"], "active")
         self.assertEqual(values["data_reference"], "route-uid")
-        self.assertEqual(values["ha_group"], "System")
+        self.assertEqual(values["ha_group"], "Rotas")
+        self.assertTrue(values["data_name_comment"])
         self.assertEqual(values["func"], "MikrotikBinarySensor")
         self.assertIn("routing-table", (PACKAGE / "binary_sensor_types.py").read_text())
         self.assertIn("immediate-gw", (PACKAGE / "binary_sensor_types.py").read_text())
+
+    def test_route_device_is_router_scoped_and_shared_by_all_its_routes(self):
+        device_info = load_entity_method("device_info")
+
+        def entity(serial, name, route_id):
+            return SimpleNamespace(
+                hass=object(),
+                _inst=name,
+                _config_entry=SimpleNamespace(entry_id=f"entry-{serial}"),
+                _data=load_routes().parse_routes(
+                    [
+                        {
+                            ".id": route_id,
+                            "active": True,
+                            "disabled": False,
+                            "dynamic": False,
+                        }
+                    ]
+                )[route_id],
+                entity_description=SimpleNamespace(
+                    ha_group="Rotas",
+                    ha_connection=None,
+                    ha_connection_value=None,
+                    data_reference="route-uid",
+                    data_name="route-name",
+                    key="route_active",
+                ),
+                coordinator=SimpleNamespace(
+                    data={
+                        "routerboard": {"serial-number": serial},
+                        "resource": {"board-name": "hEX", "platform": "MikroTik"},
+                    },
+                    config_entry=SimpleNamespace(
+                        data={"ssl": False, "host": "router.local"}
+                    ),
+                ),
+            )
+
+        first = device_info(entity("SERIAL-A", "Home", "*1"))
+        second = device_info(entity("SERIAL-A", "Home", "*2"))
+        other = device_info(entity("SERIAL-B", "Office", "*1"))
+        self.assertEqual(first["identifiers"], second["identifiers"])
+        self.assertNotEqual(first["identifiers"], other["identifiers"])
+        self.assertEqual(first["name"], "Home Rotas")
+        self.assertEqual(first["via_device_id"], "router-device")
+        self.assertNotIn("connections", first)
+
+    def test_route_comment_name_and_fallback_preserve_existing_unique_id(self):
+        custom_name = load_entity_method("custom_name")
+        unique_id = load_entity_method("_mikrotik_unique_id")
+        description = SimpleNamespace(
+            data_name_comment=True,
+            data_name="route-name",
+            data_reference="route-uid",
+            name="Route active",
+            key="route_active",
+        )
+        for comment, expected in (
+            ("Nord USA", "Nord USA"),
+            ("", "0.0.0.0/0 [vpn] via wg Route active"),
+        ):
+            row = load_routes().parse_routes(
+                [
+                    {
+                        ".id": "*A",
+                        "comment": comment,
+                        "dst-address": "0.0.0.0/0",
+                        "routing-table": "vpn",
+                        "gateway": "wg",
+                        "active": False,
+                        "disabled": False,
+                        "dynamic": False,
+                    }
+                ]
+            )["*A"]
+            entity = SimpleNamespace(
+                _uid="*A", _inst="Home", _data=row, entity_description=description
+            )
+            self.assertEqual(custom_name(entity), expected)
+            self.assertEqual(unique_id(entity), "home-route_active-2a41")
+
+    def test_route_with_unknown_active_flag_is_unavailable_not_off(self):
+        tree = ast.parse((PACKAGE / "entity.py").read_text())
+        klass = next(
+            n
+            for n in tree.body
+            if isinstance(n, ast.ClassDef) and n.name == "MikrotikEntity"
+        )
+        method = next(
+            n
+            for n in klass.body
+            if isinstance(n, ast.FunctionDef) and n.name == "available"
+        )
+        klass.body = [method]
+        klass.bases = [ast.Name(id="Base", ctx=ast.Load())]
+        method.decorator_list = [ast.Name(id="property", ctx=ast.Load())]
+
+        class Base:
+            available = True
+
+        scope = {"Base": Base}
+        exec(
+            compile(
+                ast.fix_missing_locations(ast.Module(body=[klass], type_ignores=[])),
+                "entity.py",
+                "exec",
+            ),
+            scope,
+        )
+        entity = scope["MikrotikEntity"]()
+        setattr(
+            entity,
+            "entity_description",
+            SimpleNamespace(data_path="route", data_attribute="active"),
+        )
+        setattr(entity, "_uid", "*A")
+        setattr(
+            entity,
+            "coordinator",
+            SimpleNamespace(
+                data={"route": {"*A": {"active": None}, "*B": {"active": False}}}
+            ),
+        )
+        self.assertFalse(entity.available)
+        setattr(entity, "_uid", "*B")
+        self.assertTrue(entity.available)
 
     def test_existing_route_sensor_exposes_all_flags_as_attributes(self):
         tree = ast.parse((PACKAGE / "binary_sensor_types.py").read_text())
@@ -438,10 +620,12 @@ class RouteStatusTest(unittest.TestCase):
 
     def test_manifest_and_docs_describe_route_flags(self):
         manifest = json.loads((PACKAGE / "manifest.json").read_text())
-        self.assertEqual(manifest["version"], "2.3.4")
+        self.assertEqual(manifest["version"], "2.3.5")
         readme = (ROOT / "README.md").read_text()
         self.assertIn("U (unreachable)", readme)
         self.assertIn("ambiguous", readme)
+        self.assertIn("Rotas", readme)
+        self.assertIn("entity_id", readme)
 
     def test_route_option_is_opt_in_in_setup_and_polling(self):
         const = (PACKAGE / "const.py").read_text()
