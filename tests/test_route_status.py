@@ -54,7 +54,233 @@ def load_entity_method(name):
     return namespace[name]
 
 
+def load_skip_sensor():
+    tree = ast.parse((PACKAGE / "entity.py").read_text())
+    method = next(
+        n
+        for n in tree.body
+        if isinstance(n, ast.FunctionDef) and n.name == "_skip_sensor"
+    )
+    namespace = {
+        "CONF_SENSOR_PORT_TRAFFIC": "port_traffic",
+        "DEFAULT_SENSOR_PORT_TRAFFIC": False,
+        "CONF_SENSOR_PORT_TRACKER": "port_tracker",
+        "DEFAULT_SENSOR_PORT_TRACKER": False,
+        "CONF_SENSOR_NETWATCH_TRACKER": "netwatch_tracker",
+        "DEFAULT_SENSOR_NETWATCH_TRACKER": False,
+        "CONF_TRACK_HOSTS": "track_hosts",
+        "DEFAULT_TRACK_HOSTS": False,
+    }
+    exec(
+        compile(
+            ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[])),
+            "entity.py",
+            "exec",
+        ),
+        namespace,
+    )
+    return namespace["_skip_sensor"]
+
+
 class RouteStatusTest(unittest.TestCase):
+    def test_disabled_static_route_without_active_value_is_off_with_attributes(self):
+        # /ip/route may omit a requested status property with no value.
+        row = {
+            ".id": "*80000024",
+            "dst-address": "0.0.0.0/0",
+            "routing-table": "main",
+            "gateway": "192.0.2.1",
+            "comment": "FORCAR PELA CLARO (QUEM TA NA LISTA)",
+            "disabled": "true",
+            "dynamic": "false",
+        }
+        route = load_routes().parse_routes([row])[row[".id"]]
+        self.assertIs(route["active"], False)
+        self.assertIs(route["disabled"], True)
+        self.assertIs(route["inactive"], False)
+        self.assertEqual(route["comment"], row["comment"])
+        self.assertEqual(route["gateway"], row["gateway"])
+        self.assertEqual(route["route-uid"], row[".id"].encode().hex())
+
+    def test_explicit_inactive_route_without_disabled_value_is_off(self):
+        route = load_routes().parse_routes(
+            [{".id": "*I", "active": "false", "comment": "USHI"}]
+        )["*I"]
+        self.assertIs(route["active"], False)
+        self.assertIs(route["inactive"], True)
+        self.assertIs(route["disabled"], False)
+
+    def test_routeros_ushi_route_without_active_flag_is_off_with_details(self):
+        row = {
+            ".id": "*80000024",
+            "dst-address": "0.0.0.0/0",
+            "routing-table": "claro",
+            "gateway": "8.8.4.4",
+            "comment": "FORCAR PELA CLARO (QUEM TA NA LISTA)",
+            "disabled": "false",
+            "inactive": "true",
+        }
+        route = load_routes().parse_routes([row])[row[".id"]]
+        self.assertIs(route["active"], False)
+        self.assertIs(route["inactive"], True)
+        self.assertEqual(route["comment"], row["comment"])
+        self.assertEqual(route["dst-address"], row["dst-address"])
+        self.assertEqual(route["gateway"], row["gateway"])
+
+    def test_missing_boolean_flags_on_existing_route_do_not_hide_it(self):
+        route = load_routes().parse_routes(
+            [{".id": "*I", "comment": "Backup ISP", "dst-address": "0.0.0.0/0"}]
+        )["*I"]
+        self.assertIs(route["active"], False)
+        self.assertIs(route["inactive"], True)
+        self.assertEqual(route["comment"], "Backup ISP")
+
+    def test_invalid_flag_value_is_not_silently_treated_as_false(self):
+        route = load_routes().parse_routes(
+            [{".id": "*I", "comment": "Ambiguous", "active": "maybe"}]
+        )["*I"]
+        self.assertIsNone(route["active"])
+
+    def test_only_commented_routes_without_dynamic_flag_are_discovered(self):
+        rows = [
+            {".id": "*A", "comment": "Backup ISP", "dynamic": False, "active": False},
+            {".id": "*B", "comment": "Disabled ISP", "dynamic": "no", "disabled": True},
+            {".id": "*C", "comment": "Dynamic ISP", "dynamic": True},
+            {".id": "*D", "comment": "", "dynamic": False},
+            {".id": "*E", "comment": "   ", "dynamic": False},
+            {".id": "*F", "comment": "Unknown flag", "active": False},
+        ]
+        data = load_routes().parse_routes(rows)
+        description = SimpleNamespace(data_path="route", func="MikrotikBinarySensor")
+        skip = load_skip_sensor()
+        accepted = {
+            uid
+            for uid in data
+            if not skip(SimpleNamespace(options={}), description, data, uid)
+        }
+        self.assertEqual(accepted, {"*A", "*B", "*F"})
+
+    def test_stale_ip_route_cleanup_is_narrow_and_preserves_named_routes(self):
+        entry = "mikrotik-entry"
+
+        def item(entity_id, original_name, uid, **overrides):
+            values = {
+                "entity_id": entity_id,
+                "original_name": original_name,
+                "unique_id": f"mikrotik-route_active-{uid}",
+                "name": None,
+                "platform": "mikrotik_router",
+                "config_entry_id": entry,
+            }
+            values.update(overrides)
+            return SimpleNamespace(**values)
+
+        ip_name = "10.0.0.0/24 [main] via WAN - 1 - Vivo Route active"
+        old_ip = item("binary_sensor.mikrotik_routes_10_0_0_0", ip_name, "old")
+        restored_comment = item("binary_sensor.restored_comment", ip_name, "kept")
+        custom = item("binary_sensor.user_named", ip_name, "custom", name="My route")
+        other_entry = item(
+            "binary_sensor.other_router", ip_name, "other", config_entry_id="other"
+        )
+        other_platform = item(
+            "binary_sensor.other_platform", ip_name, "other", platform="other"
+        )
+        active_named = item("binary_sensor.claro", "FORCAR PELA CLARO", "claro")
+        result = load_routes().stale_ip_route_entity_ids(
+            [
+                old_ip,
+                restored_comment,
+                custom,
+                other_entry,
+                other_platform,
+                active_named,
+            ],
+            entry,
+            {"kept", "claro"},
+        )
+        self.assertEqual(result, [old_ip.entity_id])
+
+    def test_stale_ip_route_cleanup_does_not_remove_foreign_entity_domains(self):
+        old_switch = SimpleNamespace(
+            entity_id="switch.mikrotik_routes_ip",
+            original_name="10.0.0.0/24 [main] via bridge Route active",
+            unique_id="mikrotik-route_active-old",
+            name=None,
+            platform="mikrotik_router",
+            config_entry_id="entry",
+        )
+        self.assertEqual(
+            load_routes().stale_ip_route_entity_ids([old_switch], "entry", set()), []
+        )
+
+    def test_setup_purges_only_stale_ip_route_entities_with_valid_snapshot(self):
+        source = ast.parse((PACKAGE / "binary_sensor.py").read_text())
+        cleanup = next(
+            node
+            for node in source.body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_cleanup_stale_ip_route_entities"
+        )
+        setup = next(
+            node
+            for node in source.body
+            if isinstance(node, ast.AsyncFunctionDef)
+            and node.name == "async_setup_entry"
+        )
+        self.assertTrue(
+            any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == cleanup.name
+                for node in ast.walk(setup)
+            )
+        )
+        removed = []
+        old = SimpleNamespace(
+            entity_id="binary_sensor.mikrotik_routes_10_0_0_0",
+            original_name="10.0.0.0/24 [main] via WAN - 1 - Vivo Route active",
+            unique_id="mikrotik-route_active-old",
+            name=None,
+            platform="mikrotik_router",
+            config_entry_id="entry",
+        )
+        registry = SimpleNamespace(
+            entities={old.entity_id: old}, async_remove=removed.append
+        )
+        scope = {
+            "entity_registry": SimpleNamespace(async_get=lambda hass: registry),
+            "stale_ip_route_entity_ids": load_routes().stale_ip_route_entity_ids,
+            "CONF_SENSOR_ROUTES": "sensor_routes",
+            "DEFAULT_SENSOR_ROUTES": False,
+            "_LOGGER": SimpleNamespace(info=lambda *args: None),
+        }
+        exec(
+            compile(
+                ast.fix_missing_locations(ast.Module(body=[cleanup], type_ignores=[])),
+                "binary_sensor.py",
+                "exec",
+            ),
+            scope,
+        )
+        entry = SimpleNamespace(
+            entry_id="entry",
+            options={"sensor_routes": True},
+            runtime_data=SimpleNamespace(
+                data_coordinator=SimpleNamespace(data={"route": None})
+            ),
+        )
+        scope[cleanup.name](object(), entry)
+        self.assertEqual(removed, [])
+        entry.runtime_data.data_coordinator.data["route"] = {
+            "*A": {
+                "route-uid": "kept",
+                "comment": "FORCAR PELA CLARO",
+                "dynamic": False,
+            }
+        }
+        scope[cleanup.name](object(), entry)
+        self.assertEqual(removed, [old.entity_id])
+
     def test_ipv4_routes_have_distinct_ids_and_actual_active_state(self):
         rows = [
             {
@@ -131,7 +357,8 @@ class RouteStatusTest(unittest.TestCase):
         self.assertEqual(set(result), {"*1", "*2", "*3", "*4"})
         self.assertFalse(result["*1"]["active"])
         self.assertFalse(result["*2"]["active"])
-        self.assertIsNone(result["*3"]["active"])
+        # Unset A/X RouterOS flags identify an existing inactive route.
+        self.assertIs(result["*3"]["active"], False)
         self.assertIsNone(result["*4"]["active"])
 
     def test_all_commented_non_dynamic_routes_survive_missing_flags(self):
@@ -149,7 +376,7 @@ class RouteStatusTest(unittest.TestCase):
         routes = load_routes().parse_routes(rows)
         self.assertEqual(set(routes), {"*A", "*B", "*C", "*D"})
         self.assertFalse(routes["*A"]["active"])
-        self.assertIsNone(routes["*B"]["active"])
+        self.assertIs(routes["*B"]["active"], False)
         self.assertIsNone(routes["*C"]["dynamic"])
         self.assertEqual(routes["*C"]["comment"], "Static unknown")
 
@@ -366,7 +593,7 @@ class RouteStatusTest(unittest.TestCase):
                     {
                         "command": "print",
                         "args": {
-                            ".proplist": ".id,dst-address,routing-table,gateway,immediate-gw,comment,active,disabled,dynamic"
+                            ".proplist": ".id,dst-address,routing-table,gateway,immediate-gw,comment,active,inactive,disabled,dynamic"
                         },
                         "ignore_trap": True,
                     },
@@ -623,11 +850,13 @@ class RouteStatusTest(unittest.TestCase):
 
     def test_manifest_and_docs_describe_route_flags(self):
         manifest = json.loads((PACKAGE / "manifest.json").read_text())
-        self.assertEqual(manifest["version"], "2.3.6")
+        self.assertEqual(manifest["version"], "2.3.7")
         readme = (ROOT / "README.md").read_text()
         self.assertIn("U (unreachable)", readme)
         self.assertIn("ambiguous", readme)
         self.assertIn("<router name> Routes", readme)
+        self.assertIn("commented routes", readme)
+        self.assertIn("old IP-labelled", readme)
         self.assertIn("entity_id", readme)
 
     def test_route_option_is_opt_in_in_setup_and_polling(self):

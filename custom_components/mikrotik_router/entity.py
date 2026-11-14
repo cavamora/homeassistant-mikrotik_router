@@ -39,6 +39,13 @@ _LOGGER = getLogger(__name__)
 
 
 def _skip_sensor(config_entry, entity_description, data, uid) -> bool:
+    if entity_description.data_path == "route":
+        route = data[uid]
+        # Keep commented routes when RouterOS omits the unset D flag.
+        return (
+            route.get("dynamic") is True or not str(route.get("comment") or "").strip()
+        )
+
     # Sensors
     if (
         entity_description.func == "MikrotikInterfaceTrafficSensor"

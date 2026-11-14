@@ -1,6 +1,29 @@
 """Normalize read-only RouterOS IPv4 route snapshots for HA."""
 
 from collections import Counter
+import re
+
+_OLD_IP_ROUTE_NAME = re.compile(
+    r"^(?:\d{1,3}\.){3}\d{1,3}/\d{1,2} \[[^\]]+\](?: via .+)? Route active$"
+)
+
+
+def stale_ip_route_entity_ids(entries, config_entry_id, live_route_uids):
+    """Find old IP-labelled route sensors not selected in the current snapshot."""
+    stale = []
+    for entry in entries:
+        if (
+            entry.config_entry_id != config_entry_id
+            or entry.platform != "mikrotik_router"
+            or not entry.entity_id.startswith("binary_sensor.")
+            or entry.name is not None
+            or not _OLD_IP_ROUTE_NAME.fullmatch(entry.original_name or "")
+        ):
+            continue
+        prefix, separator, route_uid = entry.unique_id.rpartition("-route_active-")
+        if separator and prefix and route_uid not in live_route_uids:
+            stale.append(entry.entity_id)
+    return stale
 
 
 def _flag(value):
@@ -45,8 +68,11 @@ def parse_routes(rows, routing_rows=None):
 
     for row in rows:
         route_id = row.get(".id")
-        active = _flag(row.get("active"))
-        disabled = _flag(row.get("disabled"))
+        # RouterOS omits unset boolean route flags from API print replies.
+        # A route without A/X is inactive; an unrecognized value stays unknown.
+        active = _flag(row.get("active", False))
+        disabled = _flag(row.get("disabled", False))
+        inactive = _flag(row.get("inactive"))
         dynamic = _flag(row.get("dynamic"))
         if not route_id:
             continue
@@ -73,18 +99,28 @@ def parse_routes(rows, routing_rows=None):
             ),
             "immediate-gw": row.get("immediate-gw", ""),
             "comment": row.get("comment", ""),
+            # X, I and A describe exclusive route statuses in /ip/route.
             "active": (
-                active and not disabled
-                if active is not None and disabled is not None
-                else None
+                False
+                if disabled is True or inactive is True or active is False
+                else (
+                    True
+                    if active is True and disabled is False and inactive is not True
+                    else None
+                )
             ),
             "disabled": disabled,
             "dynamic": dynamic,
             # /ip/route's X/A/I status is exclusive; disabled is not inactive.
             "inactive": (
-                not active and not disabled
-                if active is not None and disabled is not None
-                else None
+                False
+                if disabled is True or active is True
+                else (
+                    True
+                    if inactive is True
+                    or (inactive is None and active is False and disabled is False)
+                    else False if inactive is False else None
+                )
             ),
             # Missing, invalid and ambiguous /routing/route observations are unknown.
             "unreachable": _flag(routing.get("unreachable")),
