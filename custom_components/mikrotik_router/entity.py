@@ -245,7 +245,14 @@ class MikrotikEntity(CoordinatorEntity[_MikrotikCoordinatorT], Entity):
             return False
 
         if self._uid:
-            return self._uid in data
+            if self._uid not in data:
+                return False
+            if self.entity_description.data_path == "route":
+                return (
+                    data[self._uid].get(self.entity_description.data_attribute)
+                    is not None
+                )
+            return True
 
         return data.get(self.entity_description.data_attribute) is not None
 
@@ -331,6 +338,19 @@ class MikrotikEntity(CoordinatorEntity[_MikrotikCoordinatorT], Entity):
             ),
             config_entry_id=self._config_entry.entry_id,
         )
+
+        if self.entity_description.ha_group == "Rotas":
+            return DeviceInfo(
+                identifiers={
+                    (
+                        DOMAIN,
+                        f"{self.coordinator.data['routerboard']['serial-number']}-Rotas",
+                    )
+                },
+                name=f"{self._inst} Rotas",
+                manufacturer=f"{self.coordinator.data['resource']['platform']}",
+                via_device_id=via_device_id,
+            )
 
         if "mac-address" in self.entity_description.data_reference:
             dev_group = self._data[self.entity_description.data_name]
