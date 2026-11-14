@@ -69,10 +69,10 @@ def parse_routes(rows, routing_rows=None):
     for row in rows:
         route_id = row.get(".id")
         # RouterOS omits unset boolean route flags from API print replies.
-        # A route without A/X is inactive; an unrecognized value stays unknown.
+        # RouterOS omits unset A/X/I flags; lack of A alone can mean standby.
         active = _flag(row.get("active", False))
         disabled = _flag(row.get("disabled", False))
-        inactive = _flag(row.get("inactive"))
+        inactive = _flag(row.get("inactive", False))
         dynamic = _flag(row.get("dynamic"))
         if not route_id:
             continue
@@ -112,15 +112,13 @@ def parse_routes(rows, routing_rows=None):
             "disabled": disabled,
             "dynamic": dynamic,
             # /ip/route's X/A/I status is exclusive; disabled is not inactive.
-            "inactive": (
+            "inactive": False if disabled is True or active is True else inactive,
+            # A standby route is usable even when not selected (A=false).
+            # Use the explicit I flag to distinguish it from a failed route.
+            "usable": (
                 False
-                if disabled is True or active is True
-                else (
-                    True
-                    if inactive is True
-                    or (inactive is None and active is False and disabled is False)
-                    else False if inactive is False else None
-                )
+                if disabled is True or inactive is True
+                else True if disabled is False and inactive is False else None
             ),
             # Missing, invalid and ambiguous /routing/route observations are unknown.
             "unreachable": _flag(routing.get("unreachable")),
