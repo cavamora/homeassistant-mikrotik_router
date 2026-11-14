@@ -8,6 +8,7 @@ from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .binary_sensor_types import (
@@ -25,12 +26,38 @@ from .const import (
     DEFAULT_SENSOR_PORT_TRACKER,
     CONF_SENSOR_NETWATCH_TRACKER,
     DEFAULT_SENSOR_NETWATCH_TRACKER,
+    CONF_SENSOR_ROUTES,
+    DEFAULT_SENSOR_ROUTES,
 )
 from .coordinator import MikrotikConfigEntry
 from .entity import MikrotikEntity, async_add_entities
 from .helper import format_attribute
+from .route_status import stale_ip_route_entity_ids
 
 _LOGGER = getLogger(__name__)
+
+
+def _cleanup_stale_ip_route_entities(hass, config_entry) -> None:
+    """Remove only old IP-labelled route entities after a valid route scan."""
+    if not config_entry.options.get(CONF_SENSOR_ROUTES, DEFAULT_SENSOR_ROUTES):
+        return
+    coordinator_data = config_entry.runtime_data.data_coordinator.data
+    routes = coordinator_data.get("route") if coordinator_data else None
+    if not isinstance(routes, dict):
+        return
+    live_route_uids = {
+        route["route-uid"]
+        for route in routes.values()
+        if route.get("route-uid")
+        and str(route.get("comment") or "").strip()
+        and route.get("dynamic") is not True
+    }
+    registry = entity_registry.async_get(hass)
+    for entity_id in stale_ip_route_entity_ids(
+        tuple(registry.entities.values()), config_entry.entry_id, live_route_uids
+    ):
+        registry.async_remove(entity_id)
+        _LOGGER.info("Removed old IP-labelled route entity %s", entity_id)
 
 
 # ---------------------------
@@ -47,6 +74,7 @@ async def async_setup_entry(
         "MikrotikPPPSecretBinarySensor": MikrotikPPPSecretBinarySensor,
         "MikrotikPortBinarySensor": MikrotikPortBinarySensor,
     }
+    _cleanup_stale_ip_route_entities(hass, config_entry)
     await async_add_entities(
         hass,
         config_entry,

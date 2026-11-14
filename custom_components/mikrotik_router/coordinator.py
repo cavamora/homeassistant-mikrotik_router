@@ -1455,7 +1455,7 @@ class MikrotikCoordinator(DataUpdateCoordinator[None]):
                 "/ip/route",
                 command="print",
                 args={
-                    ".proplist": ".id,dst-address,routing-table,gateway,immediate-gw,comment,active,disabled,dynamic"
+                    ".proplist": ".id,dst-address,routing-table,gateway,immediate-gw,comment,active,inactive,disabled,dynamic"
                 },
                 ignore_trap=True,
             ),
